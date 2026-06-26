@@ -35,7 +35,19 @@ LLM pretraining bias and name recognition, so the score is purely relative.
 | `src/arena/` | Blind choice trials |
 | `src/scoring/` | Relative win-rate report |
 | `src/pipeline/` | End-to-end tournament |
-| `src/llm/` | OpenAI-compatible client (routes via Bifrost gateway) |
+| `src/llm/` | Provider-aware OpenAI-compatible client |
+
+## Models & providers
+
+Models are addressed as `provider:model`. Two providers are built in (both via
+OpenAI-compatible endpoints): `openai` and `google` (Gemini). Strategy/council
+runs on a strong model; the high-volume simulation arena defaults to fast/cheap
+Gemini Flash.
+
+```
+PB_MODEL=openai:gpt-4o-mini          # council / strategy
+PB_SIM_MODEL=google:gemini-2.5-flash # arena buyer simulations
+```
 
 ## Run
 
