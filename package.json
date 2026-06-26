@@ -8,6 +8,7 @@
     "tournament": "bun run src/cli.ts tournament",
     "council": "bun run src/cli.ts council",
     "arena": "bun run src/cli.ts arena",
+    "intel": "bun run src/cli.ts intel",
     "optimize": "bun run src/cli.ts optimize",
     "typecheck": "tsc --noEmit",
     "winrate": "bun run src/cli.ts winrate"

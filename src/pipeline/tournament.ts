@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { packs } from "../categories/lipcare.ts";
+import { resolvePack } from "../categories/registry.ts";
 import { Council } from "../council/council.ts";
 import { buildCohort } from "../personas/cohort.ts";
 import { Arena } from "../arena/arena.ts";
@@ -20,8 +20,7 @@ export interface TournamentOutput {
 }
 
 export async function runTournament(opts: TournamentOptions): Promise<TournamentOutput> {
-  const pack = packs[opts.categoryId];
-  if (!pack) throw new Error(`Unknown category '${opts.categoryId}'. Known: ${Object.keys(packs).join(", ")}`);
+  const pack = await resolvePack(opts.categoryId);
 
   console.error(`[1/4] Council generating ${opts.candidates} candidate brands...`);
   const council = new Council(pack);
@@ -62,8 +61,7 @@ export interface OptimizeRunOptions {
 
 /** Full run: tournament -> take best candidate -> hill-climb its win-rate. */
 export async function runOptimize(opts: OptimizeRunOptions): Promise<OptimizeResult> {
-  const pack = packs[opts.categoryId];
-  if (!pack) throw new Error(`Unknown category '${opts.categoryId}'.`);
+  const pack = await resolvePack(opts.categoryId);
 
   console.error(`[seed] tournament to pick a champion...`);
   const t = await runTournament({

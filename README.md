@@ -52,18 +52,29 @@ PB_SIM_MODEL=google:gemini-2.5-flash # arena buyer simulations
 ## Run
 
 ```bash
-cp .env.example .env   # fill PB_API_KEY (Bifrost virtual key)
+cp .env.example .env   # fill PB_API_KEY + PB_GOOGLE_API_KEY
 bun install
-bun run tournament --category=lipcare --candidates=4 --cohort=40 --out=out
+
+# Generate a CategoryPack for ANY category (saved to ./packs/<id>.json)
+bun run intel       --category="Face Sunscreen" --geo="India" --currency=INR
+
+bun run tournament  --category=lipcare --candidates=4 --cohort=40 --out=out
 bun run winrate     --category=lipcare --candidates=4 --cohort=40   # single number
-bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5  # hill-climb win-rate
+bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5  # hill-climb
+
+# Per-run provider A/B (any command):
+bun run tournament  --category=lipcare --model=openai:gpt-4o --sim-model=google:gemini-2.5-flash
 ```
+
+Generated packs in `./packs/` override built-ins of the same id, so any
+category the intel agents create is immediately usable by tournament/optimize.
 
 ## Roadmap
 
 - [x] Council → candidates → blind arena → win-rate (this scaffold)
 - [x] Autoresearch optimizer: mutate name/tagline/claim/price/offer, keep if win-rate ↑ (`src/optimizer/`, `bun run optimize`)
-- [ ] Market Intelligence agents auto-populate CategoryPacks from reviews/listings/ads
+- [x] Market Intelligence agents auto-build a CategoryPack from a brief — any category (`src/intel/`, `bun run intel`)
+- [ ] Ground intel in mined reviews/listings/ads/search demand (currently model-knowledge)
 - [ ] Calibration: log synthetic score vs real smoke-test CTR/signup
 - [ ] Creative Factory (landing pages, ads, packaging mockups)
 - [ ] Smoke Test Launcher + Evidence Dashboard
