@@ -10,6 +10,14 @@ export interface Config {
   model: string;
   simModel: string;
   concurrency: number;
+  /** Image-gen model for fast drafts / optimizer iterations (Gemini native). */
+  imageModel: string;
+  /** Image-gen model for final hero renders. */
+  imageModelPro: string;
+  /** Multimodal model the creative jury uses to score rendered images. */
+  visionModel: string;
+  /** Native Gemini base URL (image gen + vision are not on the OpenAI-compat layer). */
+  geminiBaseUrl: string;
 }
 
 /**
@@ -38,7 +46,24 @@ export function loadConfig(): Config {
   const simModel = process.env.PB_SIM_MODEL ?? "google:gemini-2.5-flash";
   const concurrency = Number(process.env.PB_CONCURRENCY ?? "6");
 
-  return { defaultProvider, providers, model, simModel, concurrency };
+  // Creative Factory: Gemini image generation + multimodal jury (native API).
+  const imageModel = process.env.PB_IMAGE_MODEL ?? "gemini-3.1-flash-image";
+  const imageModelPro = process.env.PB_IMAGE_MODEL_PRO ?? "gemini-3-pro-image";
+  const visionModel = process.env.PB_VISION_MODEL ?? "gemini-2.5-flash";
+  const geminiBaseUrl =
+    process.env.PB_GEMINI_NATIVE_URL ?? "https://generativelanguage.googleapis.com/v1beta";
+
+  return {
+    defaultProvider,
+    providers,
+    model,
+    simModel,
+    concurrency,
+    imageModel,
+    imageModelPro,
+    visionModel,
+    geminiBaseUrl,
+  };
 }
 
 /** Split a `provider:model` string into its parts using the default provider. */

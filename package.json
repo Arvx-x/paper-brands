@@ -11,6 +11,9 @@
     "harvest": "bun run src/cli.ts harvest",
     "intel": "bun run src/cli.ts intel",
     "optimize": "bun run src/cli.ts optimize",
+    "creative": "bun run src/cli.ts creative",
+    "creative-gen": "bun run src/cli.ts creative-gen",
+    "brandkit": "bun run src/cli.ts brandkit",
     "typecheck": "tsc --noEmit",
     "winrate": "bun run src/cli.ts winrate"
   },

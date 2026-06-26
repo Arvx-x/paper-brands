@@ -71,24 +71,25 @@ export class LLMClient {
   /** Complete and parse a JSON object, with one repair retry. */
   async completeJson<T>(opts: CompleteOptions): Promise<T> {
     const raw = await this.complete({ ...opts, json: true });
-    try {
-      return JSON.parse(stripFences(raw)) as T;
-    } catch {
-      const repaired = await this.complete({
-        ...opts,
-        json: true,
-        temperature: 0,
-        messages: [
-          ...opts.messages,
-          { role: "assistant", content: raw },
-          {
-            role: "user",
-            content: "That was not valid JSON. Return ONLY the corrected JSON object.",
-          },
-        ],
-      });
-      return JSON.parse(stripFences(repaired)) as T;
-    }
+    const first = parseJson<T>(raw);
+    if (first.ok) return first.value;
+
+    // Repair pass at temperature 0, with generous headroom so the corrected
+    // object isn't itself truncated (a common cause of "unterminated string").
+    const repaired = await this.complete({
+      ...opts,
+      json: true,
+      temperature: 0,
+      maxTokens: Math.max(opts.maxTokens ?? 0, 4096),
+      messages: [
+        ...opts.messages,
+        { role: "assistant", content: raw },
+        { role: "user", content: "That was not valid JSON. Return ONLY the corrected, COMPLETE JSON object." },
+      ],
+    });
+    const second = parseJson<T>(repaired);
+    if (second.ok) return second.value;
+    throw new Error(`Could not parse JSON after repair: ${second.error}`);
   }
 }
 
@@ -98,4 +99,28 @@ function stripFences(s: string): string {
     .replace(/^```(?:json)?/i, "")
     .replace(/```$/, "")
     .trim();
+}
+
+/**
+ * Best-effort JSON parse: strip code fences, then fall back to the largest
+ * brace-balanced substring (tolerates leading/trailing prose). Returns a result
+ * object rather than throwing so callers can decide whether to repair.
+ */
+function parseJson<T>(raw: string): { ok: true; value: T } | { ok: false; error: string } {
+  const candidates = [stripFences(raw), braceSlice(raw)].filter(Boolean) as string[];
+  for (const c of candidates) {
+    try {
+      return { ok: true, value: JSON.parse(c) as T };
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return { ok: false, error: (() => { try { JSON.parse(stripFences(raw)); return ""; } catch (e) { return (e as Error).message; } })() };
+}
+
+/** Slice from the first `{` to the last `}` — drops prose wrapped around an object. */
+function braceSlice(s: string): string | null {
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  return start >= 0 && end > start ? s.slice(start, end + 1) : null;
 }

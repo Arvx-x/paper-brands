@@ -8,7 +8,13 @@ export const PersonaSchema = z.object({
   name: z.string(),
   age: z.coerce.number(),
   context: z.string().describe("life context driving the purchase"),
-  budgetSensitivity: z.enum(["low", "medium", "high"]),
+  // Case/whitespace-tolerant: models (esp. Gemini) often return "Medium".
+  budgetSensitivity: z
+    .preprocess(
+      (v) => (typeof v === "string" ? v.trim().toLowerCase() : v),
+      z.enum(["low", "medium", "high"]),
+    )
+    .catch("medium"),
   primaryNeed: z.string(),
   anxieties: z.array(z.string()),
   decisionStyle: z.string(),

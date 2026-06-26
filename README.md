@@ -113,14 +113,54 @@ Intelligence agents (archetypes stay disguised). Run a subset with
 > reader, DDG-lite) for environments without an OpenAI key, but the default and
 > recommended path is OpenAI web search.
 
+## Creative Factory (`src/creative/`, `bun run creative`)
+
+Once a brand candidate exists, the Creative Factory builds its **visual + verbal
+system and a self-optimizing library of high-polish creatives** — the same
+`Pack → Council → Arena → Optimizer` spine, applied to visuals:
+
+| Strategy pipeline | Creative pipeline |
+|---|---|
+| `CategoryPack` | **`BrandKit`** — palette (hex), type mood, art direction, voice, do/don't, negative prompt |
+| `Council` (strategy agents) | **Creative Council** — Art Director, Copywriter, Brand Guardian, Performance Marketer, Competitor-Creative Analyst, Prompt Engineer |
+| `Arena` (blind buyer win-rate) | **Jury** — multimodal vision panel scores the *rendered* image (polish / brand-consistency / clarity / conversion / differentiation) → 0..100 |
+| `optimize()` hill-climb | **`optimizeCreative()`** — mutate copy/layout/prompt, re-render, keep if jury score ↑ |
+
+Flow: `concept → [competitor-creative research] → BrandKit → identity (logo +
+packaging, jury-picked) → brief → spec → render → jury → hill-climb → final pro
+render → library`. The chosen **logo/packaging become reference images** fed into
+every later render, so the whole library stays visually consistent. The resulting
+BrandKit + identity refs then power on-demand generation of **any asset at any
+dimension** (`creative-gen`).
+
+Rendering uses **Gemini image models** via the Interactions API
+(`PB_IMAGE_MODEL` flash for drafts/iterations, `PB_IMAGE_MODEL_PRO` for finals);
+the jury sees pixels via the OpenAI-compat vision layer (`PB_VISION_MODEL`).
+
+```bash
+# Full loop from a category (seeds a tournament, then builds creatives)
+bun run creative --category=lipcare --assets=ad-square,ad-story,landing-hero --research --rounds=3
+
+# From a saved concept JSON; --dry judges the prompt instead of spending image credits
+bun run creative --concept=out/concept.json --dry
+
+# Build just the BrandKit
+bun run brandkit --concept=out/concept.json --research
+
+# Generate ANY asset at ANY dimension on demand, on-brand
+bun run creative-gen --brand="<name>" --asset=ad-story --aspect=9:16 --purpose="ramp-up launch teaser"
+```
+
+> Same caveat as the arena: the jury score is a **synthetic quality signal**, a
+> hypothesis filter — calibrate it against real engagement before trusting it.
+
 ## Roadmap
 
 - [x] Council → candidates → blind arena → win-rate (this scaffold)
 - [x] Autoresearch optimizer: mutate name/tagline/claim/price/offer, keep if win-rate ↑ (`src/optimizer/`, `bun run optimize`)
 - [x] Market Intelligence agents auto-build a CategoryPack from a brief — any category (`src/intel/`, `bun run intel`)
 - [x] Programmatic scraping/grounding: harvest a real corpus, ground the pack in it (`src/scrape/`, `bun run harvest`, `intel --ground`)
+- [x] Creative Factory: BrandKit → identity → self-optimizing creative library, any asset/dimension (`src/creative/`, `bun run creative`)
 - [ ] Calibration: log synthetic score vs real smoke-test CTR/signup
-- [ ] Calibration: log synthetic score vs real smoke-test CTR/signup
-- [ ] Creative Factory (landing pages, ads, packaging mockups)
 - [ ] Smoke Test Launcher + Evidence Dashboard
 - [ ] Additional category packs (sunscreen, hair serums, supplements, ...)
