@@ -87,10 +87,23 @@ synthesized answers with real citations — no brittle SERP scraping):
 | `competitive` | Brand landscape, positioning, white space |
 | `trends` | Emerging ingredients, formats, demand shifts |
 
-A dedicated **pricing pass** (`prices.ts`) pulls real current SKU prices and
-derives price bands from observed-price **percentiles** — so bands are sane
-(e.g. lip balm: mass ₹108–210, premium-mass ₹210–302, premium ₹302–405) instead
-of an LLM guess. These data-derived bands override the strategy model's bands.
+Analysts run over **both OpenAI and Gemini grounded web search** (`research.ts`),
+merging two indexes for wider coverage.
+
+### Pricing (`prices.ts`) — layered + dynamic
+
+Pricing is its own layered discovery, not a guess:
+1. Fan out many queries (tiers × retailers × sub-segments) across **OpenAI +
+   Gemini** grounded search to find as many real SKUs as possible.
+2. Consolidate into structured records with a strict JSON pass.
+3. Normalize pack size → **price-per-gram** (so 4g sticks vs 10g tubs compare).
+4. Gently drop only absurd rows (never nuke small samples).
+5. **Cluster prices to discover the natural number of tiers** (k chosen by
+   silhouette, `cluster.ts`) — dynamic labels, ranges, shares, per-gram medians,
+   and example SKUs. No hardcoded 3 tiers.
+
+These data-derived bands override the strategy model's bands; archetype price
+positioning is constrained to the discovered tier labels.
 
 `intel --ground` feeds the multi-lens corpus + the derived bands to the Market
 Intelligence agents (archetypes stay disguised). Run a subset with

@@ -59,7 +59,10 @@ export async function buildCategoryPack(
           `- priceBands[] of { label, lowMinor, highMinor } in MINOR units of ${brief.currency} ` +
           `(MINOR = x100; e.g. ${brief.currency} 250 => 25000, ${brief.currency} 800 => 80000)\n` +
           `- competitorArchetypes[] (3-5) of { codeName, description, ` +
-          `pricePositioning, claims[], strengths[], weaknesses[] } — DISGUISED, no real names\n` +
+          `pricePositioning, claims[], strengths[], weaknesses[] } — DISGUISED, no real names. ` +
+          (brief.priceBands?.length
+            ? `pricePositioning MUST be one of these tier labels: ${brief.priceBands.map((b) => b.label).join(", ")}.\n`
+            : `\n`) +
           `- complianceNotes[] (category-specific legal/claims constraints)\n` +
           `- buyerSegments[] of { seed, weight } where weights sum to ~1.0\n` +
           `Return ONLY the JSON object.`,

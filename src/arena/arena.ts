@@ -152,6 +152,11 @@ export class Arena {
 }
 
 function midPrice(pack: CategoryPack, band: string): number {
-  const b = pack.priceBands.find((x) => x.label === band) ?? pack.priceBands[0]!;
+  if (!pack.priceBands.length) return 0;
+  // Match by label; tolerate dynamic/renamed tiers by substring, else median band.
+  const b =
+    pack.priceBands.find((x) => x.label === band) ??
+    pack.priceBands.find((x) => band.includes(x.label) || x.label.includes(band)) ??
+    pack.priceBands[Math.floor(pack.priceBands.length / 2)]!;
   return Math.round((b.lowMinor + b.highMinor) / 2);
 }

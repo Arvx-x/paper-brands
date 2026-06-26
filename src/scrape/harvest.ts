@@ -1,8 +1,7 @@
 import { mkdir } from "node:fs/promises";
-import { openaiResearch, isOpenAISearchAvailable } from "./openaiSearch.ts";
+import { multiResearch, availableProviders } from "./research.ts";
 import { gatherPriceIntel, type PriceIntel } from "./prices.ts";
 import { ANALYSTS, type Analyst } from "../intel/analysts.ts";
-import type { PriceBand } from "../categories/types.ts";
 
 export interface HarvestOptions {
   category: string;
@@ -51,7 +50,7 @@ async function runAnalyst(
   const findings: LensFinding[] = [];
   await pool(queries, concurrency, async (q) => {
     try {
-      const r = await openaiResearch(q, analyst.system);
+      const r = await multiResearch(q, analyst.system);
       if (r.content) {
         findings.push({ lens: analyst.lens, query: q, content: r.content, citations: r.citations });
       }
@@ -73,13 +72,15 @@ export async function harvest(opts: HarvestOptions): Promise<Corpus> {
   const currency = opts.currency ?? "INR";
   const concurrency = opts.concurrency ?? 3;
 
-  if (!isOpenAISearchAvailable()) {
-    throw new Error("OpenAI web search requires PB_API_KEY. Set it in .env.");
+  const providers = availableProviders();
+  if (!providers.length) {
+    throw new Error("Web search requires PB_API_KEY (OpenAI) and/or PB_GOOGLE_API_KEY (Gemini).");
   }
 
   const team = ANALYSTS.filter((a) => !opts.lenses || opts.lenses.includes(a.id));
   console.error(
-    `[harvest] research team of ${team.length} analysts for "${opts.category}"${geography ? " (" + geography + ")" : ""}`,
+    `[harvest] research team of ${team.length} analysts for "${opts.category}"` +
+      `${geography ? " (" + geography + ")" : ""} via [${providers.join(", ")}]`,
   );
 
   // Analysts run concurrently; price intel runs alongside.
@@ -92,15 +93,24 @@ export async function harvest(opts: HarvestOptions): Promise<Corpus> {
   });
   const pricePromise = gatherPriceIntel(opts.category, geography, currency)
     .then((pi) => {
+      const s = pi.stats;
       console.error(
-        `  [pricing] ${pi.observations.length} price points -> ` +
-          (pi.bands.length
-            ? pi.bands.map((b) => `${b.label} ${currency}${b.lowMinor / 100}-${b.highMinor / 100}`).join(", ")
-            : "(insufficient data)"),
+        `  [pricing] ${pi.observations.length} SKUs (${pi.dropped} trimmed)` +
+          (s ? `, median ${currency}${s.median}${s.medianPerGram ? ` (${currency}${s.medianPerGram}/g)` : ""}` : ""),
       );
+      for (const b of pi.buckets) {
+        console.error(
+          `    ${b.label}: ${currency}${b.lowMinor / 100}-${b.highMinor / 100} ` +
+            `(${Math.round(b.share * 100)}%, n=${b.count}) e.g. ${b.examples[0] ?? ""}`,
+        );
+      }
+      if (!pi.buckets.length) console.error(`    (insufficient price data)`);
       return pi;
     })
-    .catch(() => ({ currency, observations: [], bands: [] as PriceBand[] }));
+    .catch(
+      () =>
+        ({ currency, observations: [], dropped: 0, bands: [], buckets: [], stats: null }) satisfies PriceIntel,
+    );
 
   const [, price] = await Promise.all([Promise.all(work), pricePromise]);
 
@@ -138,11 +148,20 @@ export function corpusToEvidence(corpus: Corpus, maxChars = 28000): string {
     }
   }
   if (corpus.price.observations.length) {
+    const s = corpus.price.stats;
     const obs = corpus.price.observations
-      .slice(0, 25)
-      .map((o) => `${corpus.currency} ${o.price} ${o.brand} ${o.product}`.trim())
+      .slice(0, 30)
+      .map(
+        (o) =>
+          `${corpus.currency}${o.price} ${o.brand} ${o.product}` +
+          (o.packSize ? ` (${o.packSize}${o.pricePerGram ? `, ${corpus.currency}${o.pricePerGram}/g` : ""})` : ""),
+      )
       .join("; ");
-    parts.push(`## OBSERVED PRICES\n${obs}`);
+    const summary = s
+      ? `n=${s.n} min=${s.min} p25=${s.p25} median=${s.median} p75=${s.p75} max=${s.max}` +
+        (s.medianPerGram ? ` medianPerGram=${s.medianPerGram}` : "")
+      : "";
+    parts.push(`## OBSERVED PRICES (${summary})\n${obs}`);
   }
   return parts.join("\n\n").slice(0, maxChars);
 }
