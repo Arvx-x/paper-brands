@@ -44,12 +44,13 @@ cp .env.example .env   # fill PB_API_KEY (Bifrost virtual key)
 bun install
 bun run tournament --category=lipcare --candidates=4 --cohort=40 --out=out
 bun run winrate     --category=lipcare --candidates=4 --cohort=40   # single number
+bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5  # hill-climb win-rate
 ```
 
 ## Roadmap
 
 - [x] Council → candidates → blind arena → win-rate (this scaffold)
-- [ ] Autoresearch optimizer: mutate name/tagline/claim/price/offer, keep if win-rate ↑
+- [x] Autoresearch optimizer: mutate name/tagline/claim/price/offer, keep if win-rate ↑ (`src/optimizer/`, `bun run optimize`)
 - [ ] Market Intelligence agents auto-populate CategoryPacks from reviews/listings/ads
 - [ ] Calibration: log synthetic score vs real smoke-test CTR/signup
 - [ ] Creative Factory (landing pages, ads, packaging mockups)

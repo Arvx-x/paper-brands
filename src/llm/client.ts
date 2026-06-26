@@ -28,7 +28,17 @@ export class LLMClient {
       temperature: opts.temperature ?? 0.7,
     };
     if (opts.maxTokens) body.max_tokens = opts.maxTokens;
-    if (opts.json) body.response_format = { type: "json_object" };
+    if (opts.json) {
+      body.response_format = { type: "json_object" };
+      // OpenAI requires the literal word "json" somewhere in the messages.
+      const mentionsJson = opts.messages.some((m) => /json/i.test(m.content));
+      if (!mentionsJson) {
+        body.messages = [
+          { role: "system", content: "Respond with a single valid JSON object." },
+          ...opts.messages,
+        ];
+      }
+    }
 
     const res = await fetch(`${this.cfg.baseUrl}/chat/completions`, {
       method: "POST",

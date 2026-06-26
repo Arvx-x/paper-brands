@@ -3,10 +3,10 @@ import { LLMClient } from "../llm/client.ts";
 import type { CategoryPack } from "../categories/types.ts";
 
 export const PersonaSchema = z.object({
-  id: z.string(),
+  id: z.coerce.string(),
   segment: z.string(),
   name: z.string(),
-  age: z.number(),
+  age: z.coerce.number(),
   context: z.string().describe("life context driving the purchase"),
   budgetSensitivity: z.enum(["low", "medium", "high"]),
   primaryNeed: z.string(),

@@ -50,6 +50,39 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   return out;
 }
 
+import { optimize, type OptimizeResult } from "../optimizer/optimize.ts";
+
+export interface OptimizeRunOptions {
+  categoryId: string;
+  candidates: number;
+  cohortSize: number;
+  rounds: number;
+  outDir?: string;
+}
+
+/** Full run: tournament -> take best candidate -> hill-climb its win-rate. */
+export async function runOptimize(opts: OptimizeRunOptions): Promise<OptimizeResult> {
+  const pack = packs[opts.categoryId];
+  if (!pack) throw new Error(`Unknown category '${opts.categoryId}'.`);
+
+  console.error(`[seed] tournament to pick a champion...`);
+  const t = await runTournament({
+    categoryId: opts.categoryId,
+    candidates: opts.candidates,
+    cohortSize: opts.cohortSize,
+  });
+  const winnerId = t.report.winner?.conceptId;
+  const champion = t.concepts.find((c) => c.id === winnerId) ?? t.concepts[0]!;
+  console.error(`[seed] champion = ${champion.name}`);
+
+  const { buildCohort } = await import("../personas/cohort.ts");
+  console.error(`[opt] building fixed evaluation cohort (${opts.cohortSize})...`);
+  const cohort = await buildCohort(pack, opts.cohortSize);
+
+  console.error(`[opt] hill-climbing over ${opts.rounds} rounds...`);
+  return optimize({ pack, champion, cohort, rounds: opts.rounds, outDir: opts.outDir });
+}
+
 export function formatReport(out: TournamentOutput): string {
   const { report } = out;
   const lines: string[] = [];

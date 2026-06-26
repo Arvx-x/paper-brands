@@ -8,7 +8,7 @@ import type { CompetitorArchetype, CategoryPack } from "../categories/types.ts";
 /** A choice made by one persona over a blinded slate of options. */
 const ChoiceSchema = z.object({
   pick: z.string().describe("label of the chosen OPTION"),
-  willingnessToPayMinor: z.number(),
+  willingnessToPay: z.number().describe("max price in whole currency units"),
   reason: z.string(),
   topObjection: z.string(),
 });
@@ -115,7 +115,7 @@ export class Arena {
         segment: persona.segment,
         pickedLabel: choice.pick,
         pickedConceptId: matched.conceptId,
-        willingnessToPayMinor: choice.willingnessToPayMinor,
+        willingnessToPayMinor: Math.round(choice.willingnessToPay * 100),
         reason: choice.reason,
         topObjection: choice.topObjection,
       });
@@ -143,7 +143,7 @@ export class Arena {
             `You are ${persona.shoppingContext}. These are unbranded options ` +
             `(names hidden on purpose). Pick exactly ONE you would actually buy.\n\n` +
             `${slate}\n\n` +
-            `Return JSON: { "pick": "OPTION-x", "willingnessToPayMinor": <int>, ` +
+            `Return JSON: { "pick": "OPTION-x", "willingnessToPay": <whole ${this.pack.currency}>, ` +
             `"reason": "...", "topObjection": "..." }`,
         },
       ],
