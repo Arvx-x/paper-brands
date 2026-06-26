@@ -11,6 +11,8 @@ export interface CategoryBrief {
   notes?: string;
   /** Harvested real-world corpus excerpts to ground the pack in evidence. */
   evidence?: string;
+  /** Data-derived price bands (from real SKU prices); overrides LLM guess. */
+  priceBands?: { label: string; lowMinor: number; highMinor: number }[];
 }
 
 /**
@@ -69,7 +71,11 @@ export async function buildCategoryPack(
   const id = String(raw.id ?? slug(brief.category));
   const pack = CategoryPackSchema.parse({ ...raw, id });
   pack.buyerSegments = normalizeWeights(pack.buyerSegments);
-  pack.priceBands = normalizePriceBands(pack.priceBands);
+  // Prefer data-derived bands from real SKU prices; else guard the LLM guess.
+  pack.priceBands =
+    brief.priceBands && brief.priceBands.length
+      ? brief.priceBands
+      : normalizePriceBands(pack.priceBands);
   return pack;
 }
 

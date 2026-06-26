@@ -55,8 +55,8 @@ PB_SIM_MODEL=google:gemini-2.5-flash # arena buyer simulations
 cp .env.example .env   # fill PB_API_KEY + PB_GOOGLE_API_KEY
 bun install
 
-# Scrape a real evidence corpus for a category (scripted; saved to ./data/<id>/)
-bun run harvest     --category="lip balm" --geo="India" --results=10 --pages=25
+# Research a category with the analyst team + price intel (saved to ./data/<id>/)
+bun run harvest     --category="lip balm" --geo="India" --currency=INR
 
 # Generate a CategoryPack for ANY category (add --ground to use the corpus)
 bun run intel       --category="lip balm" --geo="India" --currency=INR --ground
@@ -72,28 +72,33 @@ bun run tournament  --category=lipcare --model=openai:gpt-4o --sim-model=google:
 Generated packs in `./packs/` override built-ins of the same id, so any
 category the intel agents create is immediately usable by tournament/optimize.
 
-## Scraping & grounding (`src/scrape/`)
+## Research team & grounding (`src/scrape/`, `src/intel/analysts.ts`)
 
-`bun run harvest` runs an intent-driven query plan (best-of, complaints,
-buying guides, ingredients-to-avoid, price comparison, ...) entirely through
-**scripts** — no agent browser. Pipeline:
+`bun run harvest` runs a **team of analyst agents**, each owning a lens and a
+tailored query plan, over **OpenAI native web search** (`*-search-preview`,
+synthesized answers with real citations — no brittle SERP scraping):
 
-1. `search.ts` — multi-provider web search. **Keyed APIs preferred** (set any of
-   `PB_SERPER_KEY` / `PB_BRAVE_KEY` / `PB_TAVILY_KEY`); no-key fallbacks
-   (SearXNG, Jina-reader-on-SERP, DDG-lite) work but mainstream sites heavily
-   rate-limit, so quality benefits a lot from a key.
-2. `http.ts` — `fetchReadable` pulls full page text via direct fetch, falling
-   back to the Jina reader proxy for JS-heavy/soft-blocked pages.
-3. `harvest.ts` — dedupes, applies a relevance filter, saves `data/<id>/corpus.json`.
+| Lens | Sources |
+|------|---------|
+| `social-chatter` | Reddit, Quora, forums |
+| `social-media` | X/Twitter, Instagram, TikTok |
+| `marketplace` | Amazon, Flipkart, Nykaa (best-sellers, 1–2★ complaints) |
+| `reviews` | Editorial / dermatologist buying guides |
+| `competitive` | Brand landscape, positioning, white space |
+| `trends` | Emerging ingredients, formats, demand shifts |
 
-`intel --ground` feeds the corpus to the Market Intelligence agents, which must
-ground unmet needs / rejection reasons / price bands / archetypes in real
-phrasing (archetypes still disguised). Agent-browser is a supported manual
-fallback for hard-blocked sources; the default path is scripted.
+A dedicated **pricing pass** (`prices.ts`) pulls real current SKU prices and
+derives price bands from observed-price **percentiles** — so bands are sane
+(e.g. lip balm: mass ₹108–210, premium-mass ₹210–302, premium ₹302–405) instead
+of an LLM guess. These data-derived bands override the strategy model's bands.
 
-> Reality check from this build: no-key search of mainstream review/marketplace
-> sites is heavily bot-gated. For "scrape immensely" at quality, add a search
-> API key — the keyed provider is wired and preferred automatically.
+`intel --ground` feeds the multi-lens corpus + the derived bands to the Market
+Intelligence agents (archetypes stay disguised). Run a subset with
+`--lenses=marketplace,social-chatter`.
+
+> Note: `search.ts` / `http.ts` keep a no-key scripted fallback (SearXNG, Jina
+> reader, DDG-lite) for environments without an OpenAI key, but the default and
+> recommended path is OpenAI web search.
 
 ## Roadmap
 

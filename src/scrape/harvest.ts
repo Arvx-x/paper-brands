@@ -1,125 +1,123 @@
 import { mkdir } from "node:fs/promises";
-import { webSearch, type SearchResult } from "./search.ts";
-import { fetchReadable, sleep } from "./http.ts";
+import { openaiResearch, isOpenAISearchAvailable } from "./openaiSearch.ts";
+import { gatherPriceIntel, type PriceIntel } from "./prices.ts";
+import { ANALYSTS, type Analyst } from "../intel/analysts.ts";
+import type { PriceBand } from "../categories/types.ts";
 
 export interface HarvestOptions {
   category: string;
   geography?: string;
-  /** Queries per intent template; more = broader corpus. */
-  resultsPerQuery?: number;
-  /** How many result pages to fetch full text for (the slow part). */
-  pagesToFetch?: number;
+  currency?: string;
+  /** Limit which analyst lenses run (by id); default: all. */
+  lenses?: string[];
   concurrency?: number;
   outDir?: string;
 }
 
-export interface HarvestDoc {
-  url: string;
-  title: string;
-  snippet: string;
+export interface LensFinding {
+  lens: string;
   query: string;
-  text?: string; // full-page extracted text (truncated)
+  content: string;
+  citations: { url: string; title: string }[];
 }
 
 export interface Corpus {
   category: string;
   geography: string;
+  currency: string;
   harvestedAt: string;
-  queries: string[];
-  docs: HarvestDoc[];
+  lenses: Record<string, LensFinding[]>;
+  price: PriceIntel;
+  citationCount: number;
 }
 
-/** Intent-driven query plan — what a category analyst would actually search. */
-function queryPlan(category: string, geo: string): string[] {
-  const c = category;
-  const g = geo ? ` ${geo}` : "";
-  return [
-    `best ${c}${g} 2024`,
-    `${c} reviews complaints problems`,
-    `${c} not worth it disappointed review`,
-    `${c} buying guide what to look for`,
-    `${c}${g} price comparison`,
-    `${c} ingredients to avoid`,
-    `why ${c} doesn't work`,
-    `${c} reddit recommendations`,
-    `top ${c} brands${g}`,
-    `${c} customer reviews amazon`,
-  ];
-}
-
-async function pool<T>(items: T[], n: number, fn: (t: T, i: number) => Promise<void>) {
+async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>) {
   let i = 0;
   await Promise.all(
     Array.from({ length: Math.max(1, n) }, async () => {
-      while (i < items.length) {
-        const idx = i++;
-        await fn(items[idx]!, idx);
-      }
+      while (i < items.length) await fn(items[i++]!);
     }),
   );
 }
 
+/** Run one analyst's full query plan via OpenAI web search under its lens. */
+async function runAnalyst(
+  analyst: Analyst,
+  category: string,
+  geo: string,
+  concurrency: number,
+): Promise<LensFinding[]> {
+  const queries = analyst.queries(category, geo);
+  const findings: LensFinding[] = [];
+  await pool(queries, concurrency, async (q) => {
+    try {
+      const r = await openaiResearch(q, analyst.system);
+      if (r.content) {
+        findings.push({ lens: analyst.lens, query: q, content: r.content, citations: r.citations });
+      }
+    } catch {
+      /* skip failed query */
+    }
+  });
+  return findings;
+}
+
 /**
- * Immense, programmatic harvest for a category:
- *  1) run an intent-driven query plan via webSearch (scripted, no API key)
- *  2) dedupe results into candidate docs
- *  3) fetch + extract full text for the top docs (scripted fetch + HTMLRewriter)
- *  4) save the corpus to data/<id>/corpus.json
- *
- * Agent-browser is intentionally NOT used here — this is the scripted path.
- * Blocked / JS-only pages simply contribute their search snippet.
+ * Multifaceted harvest: a TEAM of analyst agents, each owning a lens (social
+ * chatter, X/Instagram, marketplace, editorial reviews, competitive, trends),
+ * runs its own query plan over OpenAI web search. A dedicated marketplace
+ * pricing pass pulls REAL SKU prices and derives sane price bands.
  */
 export async function harvest(opts: HarvestOptions): Promise<Corpus> {
   const geography = opts.geography ?? "";
-  const resultsPerQuery = opts.resultsPerQuery ?? 10;
-  const pagesToFetch = opts.pagesToFetch ?? 25;
-  const concurrency = opts.concurrency ?? 5;
-  const queries = queryPlan(opts.category, geography);
+  const currency = opts.currency ?? "INR";
+  const concurrency = opts.concurrency ?? 3;
 
-  console.error(`[harvest] ${queries.length} queries for "${opts.category}"...`);
-  const all: HarvestDoc[] = [];
-  // Sequential search to be polite to the search endpoint.
-  for (const q of queries) {
-    const results: SearchResult[] = await webSearch(q, resultsPerQuery).catch(() => []);
-    for (const r of results) all.push({ ...r, query: q });
-    console.error(`  "${q}" -> ${results.length} results`);
-    await sleep(300 + Math.random() * 300);
+  if (!isOpenAISearchAvailable()) {
+    throw new Error("OpenAI web search requires PB_API_KEY. Set it in .env.");
   }
 
-  // Dedupe by URL.
-  const byUrl = new Map<string, HarvestDoc>();
-  for (const d of all) if (!byUrl.has(d.url)) byUrl.set(d.url, d);
-
-  // Relevance filter: drop off-topic junk from noisy no-key search by requiring
-  // at least one meaningful category token in the title/snippet.
-  const tokens = relevanceTokens(opts.category);
-  const relevant = [...byUrl.values()].filter((d) => {
-    const hay = `${d.title} ${d.snippet}`.toLowerCase();
-    return tokens.some((t) => hay.includes(t));
-  });
-  const docs = relevant.length >= 5 ? relevant : [...byUrl.values()];
+  const team = ANALYSTS.filter((a) => !opts.lenses || opts.lenses.includes(a.id));
   console.error(
-    `[harvest] ${byUrl.size} unique, ${relevant.length} relevant; fetching top ${pagesToFetch}...`,
+    `[harvest] research team of ${team.length} analysts for "${opts.category}"${geography ? " (" + geography + ")" : ""}`,
   );
 
-  // Fetch full text for the top N docs concurrently.
-  const toFetch = docs.slice(0, pagesToFetch);
-  let ok = 0;
-  await pool(toFetch, concurrency, async (doc) => {
-    const text = await fetchReadable(doc.url, 12000).catch(() => "");
-    if (text.length > 200) {
-      doc.text = text.slice(0, 6000);
-      ok++;
-    }
+  // Analysts run concurrently; price intel runs alongside.
+  const lensesEntries: [string, LensFinding[]][] = [];
+  const work = team.map(async (a) => {
+    const findings = await runAnalyst(a, opts.category, geography, concurrency);
+    const cites = findings.reduce((n, f) => n + f.citations.length, 0);
+    console.error(`  [${a.id}] ${findings.length} findings, ${cites} citations`);
+    lensesEntries.push([a.id, findings]);
   });
-  console.error(`[harvest] fetched full text for ${ok}/${toFetch.length} docs`);
+  const pricePromise = gatherPriceIntel(opts.category, geography, currency)
+    .then((pi) => {
+      console.error(
+        `  [pricing] ${pi.observations.length} price points -> ` +
+          (pi.bands.length
+            ? pi.bands.map((b) => `${b.label} ${currency}${b.lowMinor / 100}-${b.highMinor / 100}`).join(", ")
+            : "(insufficient data)"),
+      );
+      return pi;
+    })
+    .catch(() => ({ currency, observations: [], bands: [] as PriceBand[] }));
+
+  const [, price] = await Promise.all([Promise.all(work), pricePromise]);
+
+  const lenses: Record<string, LensFinding[]> = {};
+  for (const [id, f] of lensesEntries) lenses[id] = f;
+  const citationCount = Object.values(lenses)
+    .flat()
+    .reduce((n, f) => n + f.citations.length, 0);
 
   const corpus: Corpus = {
     category: opts.category,
     geography,
+    currency,
     harvestedAt: new Date().toISOString(),
-    queries,
-    docs,
+    lenses,
+    price,
+    citationCount,
   };
 
   const dir = opts.outDir ?? `data/${slug(opts.category)}`;
@@ -129,33 +127,24 @@ export async function harvest(opts: HarvestOptions): Promise<Corpus> {
   return corpus;
 }
 
-/** Compact the corpus into an evidence string for the intel agents. */
-export function corpusToEvidence(corpus: Corpus, maxChars = 24000): string {
+/** Compact the multi-lens corpus into an evidence string for the intel agents. */
+export function corpusToEvidence(corpus: Corpus, maxChars = 28000): string {
   const parts: string[] = [];
-  for (const d of corpus.docs) {
-    const body = d.text ?? d.snippet;
-    if (!body) continue;
-    parts.push(`### ${d.title}\n(${hostname(d.url)}) [q: ${d.query}]\n${body.slice(0, 1200)}`);
-    if (parts.join("\n\n").length > maxChars) break;
+  for (const [id, findings] of Object.entries(corpus.lenses)) {
+    if (!findings.length) continue;
+    parts.push(`## LENS: ${id} — ${findings[0]!.lens}`);
+    for (const f of findings) {
+      parts.push(`### ${f.query}\n${f.content.slice(0, 1500)}`);
+    }
+  }
+  if (corpus.price.observations.length) {
+    const obs = corpus.price.observations
+      .slice(0, 25)
+      .map((o) => `${corpus.currency} ${o.price} ${o.brand} ${o.product}`.trim())
+      .join("; ");
+    parts.push(`## OBSERVED PRICES\n${obs}`);
   }
   return parts.join("\n\n").slice(0, maxChars);
-}
-
-/** Meaningful tokens from the category for relevance filtering. */
-function relevanceTokens(category: string): string[] {
-  const stop = new Set(["the", "and", "for", "with", "best", "face", "skin"]);
-  return category
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length > 2 && !stop.has(t));
-}
-
-function hostname(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
 }
 
 function slug(s: string): string {

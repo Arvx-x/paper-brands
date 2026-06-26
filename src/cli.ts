@@ -86,13 +86,19 @@ switch (cmd) {
     const corpus = await harvest({
       category,
       geography: arg("geo", "India"),
-      resultsPerQuery: Number(arg("results", "10")),
-      pagesToFetch: Number(arg("pages", "25")),
-      concurrency: Number(arg("concurrency", "5")),
+      currency: arg("currency", "INR"),
+      lenses: arg("lenses")?.split(","),
+      concurrency: Number(arg("concurrency", "3")),
     });
-    const withText = corpus.docs.filter((d) => d.text).length;
+    const lensSummary = Object.entries(corpus.lenses)
+      .map(([id, f]) => `${id}:${f.length}`)
+      .join(" ");
+    const bands = corpus.price.bands
+      .map((b) => `${b.label} ${corpus.currency}${b.lowMinor / 100}-${b.highMinor / 100}`)
+      .join(", ");
     console.log(
-      `Harvested ${corpus.docs.length} docs (${withText} with full text) for "${category}".\n` +
+      `Harvested "${category}": ${corpus.citationCount} citations across lenses [${lensSummary}].\n` +
+        `Price bands (from ${corpus.price.observations.length} real SKUs): ${bands || "n/a"}\n` +
         `Saved to data/${slugify(category)}/corpus.json\n` +
         `Next: bun run intel --category="${category}" --ground`,
     );
@@ -104,6 +110,7 @@ switch (cmd) {
     if (!category) throw new Error('intel requires --category="..."');
 
     let evidence: string | undefined;
+    let priceBands: Corpus["price"]["bands"] | undefined;
     if (flag("ground")) {
       const geo = arg("geo", "India");
       const path = `data/${slugify(category)}/corpus.json`;
@@ -112,10 +119,13 @@ switch (cmd) {
         corpus = (await Bun.file(path).json()) as Corpus;
       } catch {
         console.error(`[intel] no corpus at ${path}; harvesting now...`);
-        corpus = await harvest({ category, geography: geo });
+        corpus = await harvest({ category, geography: geo, currency: arg("currency", "INR") });
       }
       evidence = corpusToEvidence(corpus);
-      console.error(`[intel] grounding in ${evidence.length} chars of evidence`);
+      priceBands = corpus.price.bands.length ? corpus.price.bands : undefined;
+      console.error(
+        `[intel] grounding in ${evidence.length} chars + ${priceBands?.length ?? 0} data-derived price bands`,
+      );
     }
 
     const pack = await buildCategoryPack({
@@ -126,6 +136,7 @@ switch (cmd) {
       priceAmbition: arg("ambition"),
       notes: arg("notes"),
       evidence,
+      priceBands,
     });
     const path = await savePack(pack);
     console.log(
