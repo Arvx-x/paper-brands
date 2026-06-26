@@ -9,6 +9,8 @@ export interface CategoryBrief {
   channel?: string;
   priceAmbition?: string;
   notes?: string;
+  /** Harvested real-world corpus excerpts to ground the pack in evidence. */
+  evidence?: string;
 }
 
 /**
@@ -33,19 +35,27 @@ export async function buildCategoryPack(
           "You are a Market Intelligence council (category analyst, review miner, " +
           "pricing analyst, compliance analyst). Produce a rigorous, evidence-led " +
           "category operating model. Phrase unmet needs and triggers in real " +
-          "customer language. CRITICAL: competitor archetypes must be DISGUISED " +
-          "with codeNames (e.g. ARCH-COMMODITY) and never name real brands.",
+          "customer language. When an EVIDENCE corpus is provided, ground every " +
+          "unmet need, rejection reason, price band, and competitor archetype in " +
+          "it — prefer real phrasing from reviews/complaints over generic priors. " +
+          "CRITICAL: competitor archetypes must be DISGUISED with codeNames " +
+          "(e.g. ARCH-COMMODITY) and never name real brands, even if the evidence does.",
       },
       {
         role: "user",
         content:
-          `Brief:\n${JSON.stringify(brief, null, 2)}\n\n` +
+          (brief.evidence
+            ? `EVIDENCE corpus (real harvested reviews/listings/guides):\n` +
+              `"""\n${brief.evidence}\n"""\n\n`
+            : "") +
+          `Brief:\n${JSON.stringify({ ...brief, evidence: undefined }, null, 2)}\n\n` +
           `Produce a CategoryPack JSON with EXACTLY these keys:\n` +
           `- id (slug), name, currency, geography\n` +
           `- unmetNeeds[] (5-7, customer language)\n` +
           `- purchaseTriggers[] (4-6)\n` +
           `- rejectionReasons[] (4-6)\n` +
-          `- priceBands[] of { label, lowMinor, highMinor } in MINOR units of ${brief.currency}\n` +
+          `- priceBands[] of { label, lowMinor, highMinor } in MINOR units of ${brief.currency} ` +
+          `(MINOR = x100; e.g. ${brief.currency} 250 => 25000, ${brief.currency} 800 => 80000)\n` +
           `- competitorArchetypes[] (3-5) of { codeName, description, ` +
           `pricePositioning, claims[], strengths[], weaknesses[] } — DISGUISED, no real names\n` +
           `- complianceNotes[] (category-specific legal/claims constraints)\n` +
@@ -59,6 +69,7 @@ export async function buildCategoryPack(
   const id = String(raw.id ?? slug(brief.category));
   const pack = CategoryPackSchema.parse({ ...raw, id });
   pack.buyerSegments = normalizeWeights(pack.buyerSegments);
+  pack.priceBands = normalizePriceBands(pack.priceBands);
   return pack;
 }
 
@@ -67,6 +78,24 @@ export async function savePack(pack: CategoryPack, dir = "packs"): Promise<strin
   const path = `${dir}/${pack.id}.json`;
   await Bun.write(path, JSON.stringify(pack, null, 2));
   return path;
+}
+
+/**
+ * Guard against the common LLM error of emitting price bands in MAJOR units
+ * (whole currency) when MINOR is required. If the largest band high is < 5000
+ * minor (i.e. < 50 of the currency for a physical product), assume major units
+ * were given and scale x100. Logged so it's never silent.
+ */
+function normalizePriceBands<T extends { lowMinor: number; highMinor: number; label: string }>(
+  bands: T[],
+): T[] {
+  if (!bands.length) return bands;
+  const maxHigh = Math.max(...bands.map((b) => b.highMinor));
+  if (maxHigh > 0 && maxHigh < 5000) {
+    console.error(`[intel] price bands look like major units (max ${maxHigh}); scaling x100.`);
+    return bands.map((b) => ({ ...b, lowMinor: b.lowMinor * 100, highMinor: b.highMinor * 100 }));
+  }
+  return bands;
 }
 
 function normalizeWeights<T extends { weight: number }>(segs: T[]): T[] {

@@ -55,8 +55,11 @@ PB_SIM_MODEL=google:gemini-2.5-flash # arena buyer simulations
 cp .env.example .env   # fill PB_API_KEY + PB_GOOGLE_API_KEY
 bun install
 
-# Generate a CategoryPack for ANY category (saved to ./packs/<id>.json)
-bun run intel       --category="Face Sunscreen" --geo="India" --currency=INR
+# Scrape a real evidence corpus for a category (scripted; saved to ./data/<id>/)
+bun run harvest     --category="lip balm" --geo="India" --results=10 --pages=25
+
+# Generate a CategoryPack for ANY category (add --ground to use the corpus)
+bun run intel       --category="lip balm" --geo="India" --currency=INR --ground
 
 bun run tournament  --category=lipcare --candidates=4 --cohort=40 --out=out
 bun run winrate     --category=lipcare --candidates=4 --cohort=40   # single number
@@ -69,12 +72,36 @@ bun run tournament  --category=lipcare --model=openai:gpt-4o --sim-model=google:
 Generated packs in `./packs/` override built-ins of the same id, so any
 category the intel agents create is immediately usable by tournament/optimize.
 
+## Scraping & grounding (`src/scrape/`)
+
+`bun run harvest` runs an intent-driven query plan (best-of, complaints,
+buying guides, ingredients-to-avoid, price comparison, ...) entirely through
+**scripts** — no agent browser. Pipeline:
+
+1. `search.ts` — multi-provider web search. **Keyed APIs preferred** (set any of
+   `PB_SERPER_KEY` / `PB_BRAVE_KEY` / `PB_TAVILY_KEY`); no-key fallbacks
+   (SearXNG, Jina-reader-on-SERP, DDG-lite) work but mainstream sites heavily
+   rate-limit, so quality benefits a lot from a key.
+2. `http.ts` — `fetchReadable` pulls full page text via direct fetch, falling
+   back to the Jina reader proxy for JS-heavy/soft-blocked pages.
+3. `harvest.ts` — dedupes, applies a relevance filter, saves `data/<id>/corpus.json`.
+
+`intel --ground` feeds the corpus to the Market Intelligence agents, which must
+ground unmet needs / rejection reasons / price bands / archetypes in real
+phrasing (archetypes still disguised). Agent-browser is a supported manual
+fallback for hard-blocked sources; the default path is scripted.
+
+> Reality check from this build: no-key search of mainstream review/marketplace
+> sites is heavily bot-gated. For "scrape immensely" at quality, add a search
+> API key — the keyed provider is wired and preferred automatically.
+
 ## Roadmap
 
 - [x] Council → candidates → blind arena → win-rate (this scaffold)
 - [x] Autoresearch optimizer: mutate name/tagline/claim/price/offer, keep if win-rate ↑ (`src/optimizer/`, `bun run optimize`)
 - [x] Market Intelligence agents auto-build a CategoryPack from a brief — any category (`src/intel/`, `bun run intel`)
-- [ ] Ground intel in mined reviews/listings/ads/search demand (currently model-knowledge)
+- [x] Programmatic scraping/grounding: harvest a real corpus, ground the pack in it (`src/scrape/`, `bun run harvest`, `intel --ground`)
+- [ ] Calibration: log synthetic score vs real smoke-test CTR/signup
 - [ ] Calibration: log synthetic score vs real smoke-test CTR/signup
 - [ ] Creative Factory (landing pages, ads, packaging mockups)
 - [ ] Smoke Test Launcher + Evidence Dashboard

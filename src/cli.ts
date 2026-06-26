@@ -1,5 +1,14 @@
 import { runTournament, runOptimize, formatReport } from "./pipeline/tournament.ts";
 import { buildCategoryPack, savePack } from "./intel/market.ts";
+import { harvest, corpusToEvidence, type Corpus } from "./scrape/harvest.ts";
+
+function flag(name: string): boolean {
+  return process.argv.includes(`--${name}`);
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
 
 function arg(name: string, def?: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -71,9 +80,44 @@ switch (cmd) {
     break;
   }
 
+  case "harvest": {
+    const category = arg("category");
+    if (!category) throw new Error('harvest requires --category="..."');
+    const corpus = await harvest({
+      category,
+      geography: arg("geo", "India"),
+      resultsPerQuery: Number(arg("results", "10")),
+      pagesToFetch: Number(arg("pages", "25")),
+      concurrency: Number(arg("concurrency", "5")),
+    });
+    const withText = corpus.docs.filter((d) => d.text).length;
+    console.log(
+      `Harvested ${corpus.docs.length} docs (${withText} with full text) for "${category}".\n` +
+        `Saved to data/${slugify(category)}/corpus.json\n` +
+        `Next: bun run intel --category="${category}" --ground`,
+    );
+    break;
+  }
+
   case "intel": {
     const category = arg("category");
     if (!category) throw new Error('intel requires --category="..."');
+
+    let evidence: string | undefined;
+    if (flag("ground")) {
+      const geo = arg("geo", "India");
+      const path = `data/${slugify(category)}/corpus.json`;
+      let corpus: Corpus | null = null;
+      try {
+        corpus = (await Bun.file(path).json()) as Corpus;
+      } catch {
+        console.error(`[intel] no corpus at ${path}; harvesting now...`);
+        corpus = await harvest({ category, geography: geo });
+      }
+      evidence = corpusToEvidence(corpus);
+      console.error(`[intel] grounding in ${evidence.length} chars of evidence`);
+    }
+
     const pack = await buildCategoryPack({
       category,
       geography: arg("geo", "India (D2C + marketplaces)")!,
@@ -81,6 +125,7 @@ switch (cmd) {
       channel: arg("channel"),
       priceAmbition: arg("ambition"),
       notes: arg("notes"),
+      evidence,
     });
     const path = await savePack(pack);
     console.log(
