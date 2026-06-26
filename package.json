@@ -1,0 +1,21 @@
+{
+  "name": "paper-brands",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentic brand foundry: generate, stress-test, and smoke-test launchable private-label brands before inventory exists.",
+  "scripts": {
+    "tournament": "bun run src/cli.ts tournament",
+    "council": "bun run src/cli.ts council",
+    "arena": "bun run src/cli.ts arena",
+    "typecheck": "tsc --noEmit",
+    "winrate": "bun run src/cli.ts winrate"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.6",
+    "typescript": "^5.5.4"
+  }
+}
