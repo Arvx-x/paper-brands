@@ -2,7 +2,8 @@ import { mkdir } from "node:fs/promises";
 import { resolvePack } from "../categories/registry.ts";
 import { Council } from "../council/council.ts";
 import { buildCohort } from "../personas/cohort.ts";
-import { Arena } from "../arena/arena.ts";
+import { DeepNegotiationArena } from "../arena/deep.ts";
+import { SingleShotArena } from "../arena/singleShot.ts";
 import { score, type ArenaReport } from "../scoring/score.ts";
 import type { BrandConcept } from "../brand/types.ts";
 
@@ -11,6 +12,8 @@ export interface TournamentOptions {
   candidates: number;
   cohortSize: number;
   outDir?: string;
+  deep?: boolean;   // use the deep negotiation arena
+  seed?: number;
 }
 
 export interface TournamentOutput {
@@ -33,12 +36,12 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   console.error(`      -> ${cohort.length} buyer agents`);
 
   console.error(`[3/4] Running blind arena (candidates vs disguised competitors)...`);
-  const arena = new Arena(pack);
+  const arena = opts.deep ? new DeepNegotiationArena(pack) : new SingleShotArena(pack);
   const results = await arena.run({
     candidates: concepts,
     cohort,
     pack,
-    opts: { includeCompetitors: true },
+    opts: { includeCompetitors: true, seed: opts.seed ?? 0 },
   });
 
   console.error(`[4/4] Scoring...`);
@@ -91,11 +94,16 @@ export function formatReport(out: TournamentOutput): string {
   const lines: string[] = [];
   lines.push(`\nCategory: ${out.categoryId}  |  trials: ${report.totalTrials}`);
   lines.push(`Candidate share vs field: ${(report.candidateShareVsField * 100).toFixed(1)}%`);
+  lines.push(
+    `Abstention: ${(report.abstentionRate * 100).toFixed(1)}%  |  Errors: ${(report.errorRate * 100).toFixed(1)}%` +
+      (report.degraded ? "  [DEGRADED]" : ""),
+  );
   lines.push(`\nLeaderboard (win-rate):`);
   for (const c of report.concepts) {
     const tag = c.conceptId.startsWith("competitor:") ? "  [competitor]" : "";
     lines.push(
-      `  ${(c.winRate * 100).toFixed(1).padStart(5)}%  ${c.name}${tag}` +
+      `  ${(c.winRate * 100).toFixed(1).padStart(5)}%  ` +
+        `[${(c.winRateCiLow * 100).toFixed(0)}-${(c.winRateCiHigh * 100).toFixed(0)}%]  ${c.name}${tag}` +
         (c.avgWtpMinor ? `  (avg WTP ${(c.avgWtpMinor / 100).toFixed(0)})` : ""),
     );
   }

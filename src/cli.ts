@@ -50,6 +50,8 @@ switch (cmd) {
       candidates: Number(arg("candidates", "4")),
       cohortSize: Number(arg("cohort", "40")),
       outDir: arg("out", "out"),
+      deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
+      seed: Number(arg("seed", "0")),
     });
     console.log(formatReport(out));
     break;
@@ -63,6 +65,8 @@ switch (cmd) {
       candidates: Number(arg("candidates", "4")),
       cohortSize: Number(arg("cohort", "40")),
       outDir: arg("out", "out"),
+      deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
+      seed: Number(arg("seed", "0")),
     });
     const wr = out.report.winner ? out.report.winner.winRate * 100 : 0;
     console.log(wr.toFixed(2));
