@@ -65,3 +65,15 @@ test("extractGroundedGrievances returns [] when no usable sources", async () => 
   const out = await extractGroundedGrievances([{ finalUrl: "u", sourceClass: "brand", independent: false, rawText: "stings" }] as any, [{ seed: "s" }], fakeLlm);
   expect(out).toEqual([]);
 });
+
+
+test("extractGroundedGrievances skips malformed LLM items with missing verbatimQuote", async () => {
+  const badLlm = { completeJson: async () => ({ grievances: [
+    { anxiety: "missing quote", segment: "sensitive skin buyer" },
+    { anxiety: "valid", verbatimQuote: "serum stings badly", segment: "sensitive skin buyer" },
+  ] }) } as any;
+  const sources = [{ finalUrl: "u", sourceClass: "marketplace", independent: false, rawText: "This serum stings badly." }] as any;
+  const out = await extractGroundedGrievances(sources, [{ seed: "sensitive skin buyer" }], badLlm);
+  expect(out).toHaveLength(1);
+  expect(out[0]!.anxiety).toBe("valid");
+});

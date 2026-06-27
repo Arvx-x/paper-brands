@@ -64,9 +64,9 @@ export function dedupeByQuote<T extends { verbatimQuote: string }>(items: T[]): 
 
 const ExtractSchema = z.object({
   grievances: z.array(z.object({
-    anxiety: z.string(),
-    verbatimQuote: z.string(),
-    segment: z.string(),
+    anxiety: z.string().default(""),
+    verbatimQuote: z.string().default(""),
+    segment: z.string().default(""),
   })).default([]),
 });
 
