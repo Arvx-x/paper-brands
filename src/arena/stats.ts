@@ -45,3 +45,35 @@ export function makeRng(seedStr: string): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/** Average-rank vector for tie-aware ranking. */
+function averageRanks(values: number[]): number[] {
+  const idx = values.map((v, i) => [v, i] as [number, number]).sort((a, b) => a[0] - b[0]);
+  const ranks = new Array<number>(values.length);
+  let i = 0;
+  while (i < idx.length) {
+    let j = i;
+    while (j + 1 < idx.length && idx[j + 1]![0] === idx[i]![0]) j++;
+    const avg = (i + j) / 2 + 1; // ranks are 1-based; average of the tie block
+    for (let k = i; k <= j; k++) ranks[idx[k]![1]] = avg;
+    i = j + 1;
+  }
+  return ranks;
+}
+
+/** Spearman rank correlation of paired [x,y] values. Returns 0 for < 2 pairs. */
+export function spearman(pairs: [number, number][]): number {
+  const n = pairs.length;
+  if (n < 2) return 0;
+  const rx = averageRanks(pairs.map((p) => p[0]));
+  const ry = averageRanks(pairs.map((p) => p[1]));
+  const mx = mean(rx);
+  const my = mean(ry);
+  let num = 0, dx = 0, dy = 0;
+  for (let i = 0; i < n; i++) {
+    const a = rx[i]! - mx, b = ry[i]! - my;
+    num += a * b; dx += a * a; dy += b * b;
+  }
+  if (dx === 0 || dy === 0) return 0; // no variance (all tied) => undefined => 0
+  return num / Math.sqrt(dx * dy);
+}
