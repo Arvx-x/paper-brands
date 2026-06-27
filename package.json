@@ -15,7 +15,8 @@
     "creative-gen": "bun run src/cli.ts creative-gen",
     "brandkit": "bun run src/cli.ts brandkit",
     "typecheck": "tsc --noEmit",
-    "winrate": "bun run src/cli.ts winrate"
+    "winrate": "bun run src/cli.ts winrate",
+    "test": "bun test"
   },
   "dependencies": {
     "zod": "^3.23.8"
