@@ -36,8 +36,8 @@ export function selectDiverse(tags: WedgeTag[], n: number, seed: number): Divers
   // 1. Deterministic order: shuffle by seed, then the greedy loop breaks ties by this order.
   const rng = makeRng(String(seed));
   const ordered = tags
-    .map((t) => ({ t, k: rng() }))
-    .sort((a, b) => a.k - b.k)
+    .map((t, i) => ({ t, i, k: rng() }))
+    .sort((a, b) => a.k - b.k || a.i - b.i)
     .map((x) => x.t);
 
   const chosen: WedgeTag[] = [];
