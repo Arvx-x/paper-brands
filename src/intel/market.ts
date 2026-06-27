@@ -246,6 +246,28 @@ export async function buildCategoryPack(
       (text) => segMap.get(text) ?? pack.buyerSegments[0]!.seed,
     );
   }
+
+  // Distribution grounding: blend supply proxy (existing LLM-estimate weights = supply signal)
+  // with demand proxy (grievance count per segment = review-activity signal).
+  // Uses the grievances just tagged above as the demand proxy.
+  {
+    const { blendWeights } = await import("../personas/distribution.ts");
+    const totalGrievances = pack.groundedGrievances.length || 1; // avoid /0
+    const blended = blendWeights(
+      pack.buyerSegments.map((s) => ({
+        seed: s.seed,
+        estimateWeight: s.weight,
+        supplyShare: s.weight,   // supply proxy = the existing normalized weight
+        demandShare: pack.groundedGrievances.filter((g) => g.segment === s.seed).length / totalGrievances,
+      })),
+      Number(process.env.PB_DISTRIBUTION_ALPHA ?? "0.5"),
+    );
+    pack.buyerSegments = pack.buyerSegments.map((s) => {
+      const b = blended.find((x) => x.seed === s.seed);
+      return b ? { ...s, weight: b.weight, basis: b.basis } : s;
+    });
+  }
+
   pack.personaGroundingKnownUnknowns = [
     "Grievances are STATED complaints from vocal/dissatisfied reviewers (survivorship), not a representative buyer sample.",
     "Segment weights blend supply proxy (what's stocked) and review-activity proxy (what's discussed) — neither is measured demand.",
