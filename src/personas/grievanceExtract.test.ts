@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { shouldUseSourceForGrievances, containsQuote, dedupeByQuote, looksLikeComplaint } from "./grievanceExtract.ts";
+import { shouldUseSourceForGrievances, containsQuote, dedupeByQuote, verifyGrievances, extractGroundedGrievances } from "./grievanceExtract.ts";
 
 const src = (sourceClass: string, rawText: string) => ({ finalUrl: "u", sourceClass, independent: sourceClass === "community", rawText }) as any;
 
@@ -11,7 +11,7 @@ test("source filtering includes community, and marketplace only with negative co
   expect(shouldUseSourceForGrievances(src("editorial", "review stings"))).toBe(false);
 });
 
-test("unknown source included only when complaint markers appear", () => {
+test("unknown source included only when review-context + complaint markers appear", () => {
   expect(shouldUseSourceForGrievances(src("unknown", "customer reviews say this serum stings and caused irritation"))).toBe(true);
   expect(shouldUseSourceForGrievances(src("unknown", "this article says LAA can sting but is effective"))).toBe(false);
   expect(shouldUseSourceForGrievances(src("unknown", "best vitamin c serum guide"))).toBe(false);
@@ -22,17 +22,6 @@ test("containment verification normalizes case/punctuation/spacing", () => {
   expect(containsQuote("This serum works well", "caused rash")).toBe(false);
 });
 
-test("looksLikeComplaint filters positives and keeps negative use experiences", () => {
-  expect(looksLikeComplaint("this serum stings badly and caused irritation")).toBe(true);
-  expect(looksLikeComplaint("I completely loved the visible results")).toBe(false);
-  expect(looksLikeComplaint("Brightens Skin and promotes collagen")).toBe(false);
-  expect(looksLikeComplaint("Fades dark spots")).toBe(false);
-  expect(looksLikeComplaint("Non-sticky texture")).toBe(false);
-  expect(looksLikeComplaint("Discontinue if irritation occurs")).toBe(false);
-  expect(looksLikeComplaint("Slightly expensive")).toBe(true);
-  expect(looksLikeComplaint("May irritate sensitive skin")).toBe(true);
-});
-
 test("dedupe by normalized quote", () => {
   const items = [
     { verbatimQuote: "It stings badly!", anxiety: "stinging", segment: "s" },
@@ -41,31 +30,50 @@ test("dedupe by normalized quote", () => {
   ];
   expect(dedupeByQuote(items).map((i) => i.verbatimQuote)).toEqual(["It stings badly!", "turned orange"]);
 });
-import { extractGroundedGrievances } from "./grievanceExtract.ts";
 
-const fakeLlm = {
-  completeJson: async () => ({ grievances: [
+// Fake verifier that approves complaint-like quotes by a simple keyword (stands in for the LLM).
+const fakeVerify = async (cands: any[]) =>
+  cands.filter((c) => /sting|irritat|orange|expensive|waste/i.test(c.verbatimQuote));
+
+test("verifyGrievances keeps only indices the verifier LLM approves", async () => {
+  const cands = [
+    { anxiety: "a", verbatimQuote: "serum stings badly", segment: "s" },
+    { anxiety: "b", verbatimQuote: "brightens skin nicely", segment: "s" },
+  ];
+  const llm = { completeJson: async () => ({ keep: [0] }) } as any;
+  const out = await verifyGrievances(cands, llm);
+  expect(out).toHaveLength(1);
+  expect(out[0]!.verbatimQuote).toBe("serum stings badly");
+});
+
+test("verifyGrievances fails closed (returns []) when the verifier errors", async () => {
+  const cands = [{ anxiety: "a", verbatimQuote: "serum stings badly", segment: "s" }];
+  const llm = { completeJson: async () => { throw new Error("down"); } } as any;
+  const out = await verifyGrievances(cands, llm);
+  expect(out).toEqual([]);
+});
+
+test("extractGroundedGrievances keeps contained, valid-segment, verifier-approved complaints", async () => {
+  const extractLlm = { completeJson: async () => ({ grievances: [
     { anxiety: "stinging fear", verbatimQuote: "serum stings badly", segment: "sensitive skin buyer" },
+    { anxiety: "marketing", verbatimQuote: "brightens skin nicely", segment: "sensitive skin buyer" },
     { anxiety: "hallucinated", verbatimQuote: "not in source", segment: "sensitive skin buyer" },
     { anxiety: "bad segment", verbatimQuote: "turned orange", segment: "wrong segment" },
-  ] }),
-} as any;
-
-test("extractGroundedGrievances keeps only contained quotes with valid segments", async () => {
-  const sources = [{ finalUrl: "u", sourceClass: "marketplace", independent: false, rawText: "This serum stings badly and turned orange fast." }] as any;
-  const out = await extractGroundedGrievances(sources, [{ seed: "sensitive skin buyer" }], fakeLlm, { maxTotal: 10 });
+  ] }) } as any;
+  const sources = [{ finalUrl: "u", sourceClass: "marketplace", independent: false, rawText: "This serum stings badly and brightens skin nicely and turned orange fast." }] as any;
+  const out = await extractGroundedGrievances(sources, [{ seed: "sensitive skin buyer" }], extractLlm, { maxTotal: 10, verify: fakeVerify as any });
+  // contained + valid segment: "serum stings badly", "brightens skin nicely". verifier keeps only the complaint.
   expect(out).toHaveLength(1);
+  expect(out[0]!.verbatimQuote).toBe("serum stings badly");
   expect(out[0]!.verified).toBe(true);
-  expect(out[0]!.anxiety).toBe("stinging fear");
-  expect(out[0]!.sourceUrl).toBe("u");
   expect(out[0]!.sourceClass).toBe("marketplace");
 });
 
 test("extractGroundedGrievances returns [] when no usable sources", async () => {
-  const out = await extractGroundedGrievances([{ finalUrl: "u", sourceClass: "brand", independent: false, rawText: "stings" }] as any, [{ seed: "s" }], fakeLlm);
+  const llm = { completeJson: async () => ({ grievances: [] }) } as any;
+  const out = await extractGroundedGrievances([{ finalUrl: "u", sourceClass: "brand", independent: false, rawText: "stings" }] as any, [{ seed: "s" }], llm, { verify: fakeVerify as any });
   expect(out).toEqual([]);
 });
-
 
 test("extractGroundedGrievances skips malformed LLM items with missing verbatimQuote", async () => {
   const badLlm = { completeJson: async () => ({ grievances: [
@@ -73,7 +81,7 @@ test("extractGroundedGrievances skips malformed LLM items with missing verbatimQ
     { anxiety: "valid", verbatimQuote: "serum stings badly", segment: "sensitive skin buyer" },
   ] }) } as any;
   const sources = [{ finalUrl: "u", sourceClass: "marketplace", independent: false, rawText: "This serum stings badly." }] as any;
-  const out = await extractGroundedGrievances(sources, [{ seed: "sensitive skin buyer" }], badLlm);
+  const out = await extractGroundedGrievances(sources, [{ seed: "sensitive skin buyer" }], badLlm, { verify: fakeVerify as any });
   expect(out).toHaveLength(1);
   expect(out[0]!.anxiety).toBe("valid");
 });
