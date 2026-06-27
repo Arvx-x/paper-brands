@@ -1,5 +1,5 @@
 import type { BlindCard, BrandConcept } from "../brand/types.ts";
-import type { CompetitorArchetype } from "../categories/types.ts";
+import type { BenchmarkBrand, CompetitorArchetype } from "../categories/types.ts";
 import { normalizeLen } from "./card.ts";
 
 // Word budgets keep all cards comparable so the buyer can't pick on verbosity.
@@ -28,6 +28,19 @@ export function cardFromArchetype(
   const card: BlindCard = {
     label, headline, body, claims: a.claims.slice(0, 5),
     format: "standard", priceMinor,
+  };
+  return card;
+}
+
+export function cardFromBenchmark(b: BenchmarkBrand, label: string): BlindCard {
+  // Disguise a real anchor brand: read ONLY safe fields (claims/format/priceMinor).
+  // realName/tractionScore/reviewCount/rating/retailer are AUDIT-ONLY and must
+  // never reach the buyer — the blind-control guarantee of the methodology.
+  const headline = normalizeLen(b.claims[0] ?? "Established option", HEAD);
+  const body = normalizeLen(b.claims.join(". "), BODY);
+  const card: BlindCard = {
+    label, headline, body, claims: b.claims.slice(0, 5),
+    format: b.format, priceMinor: b.priceMinor,
   };
   return card;
 }
