@@ -4,7 +4,8 @@ import type { GroundedGrievance } from "../categories/types.ts";
 
 const NEGATIVE_RE = /complain|doesn\'?t work|sting|irritat|fake|oxidiz|breakout|no results?|refund|waste|burn|rash|smell|texture|sticky|greasy|pricey|expensive|allerg|redness|watery|leak|broke|changed colour|turned orange|dark spot|darken|ineffective|worse|dry|peel/i;
 const REVIEW_CONTEXT_RE = /review|reviews|customer|verified buyer|rated|stars?|write a review|user said|buyers say/i;
-const POSITIVE_ONLY_RE = /loved|visible results|highly effective|works well|amazing|excellent|happy to see|clear in|brightens skin|hydrates|moisturi[sz]es|promotes collagen/i;
+const POSITIVE_ONLY_RE = /loved|visible results|highly effective|works well|amazing|excellent|happy to see|clear in|brightens skin|lightens skin|fades dark spots|hydrates|moisturi[sz]es|promotes collagen|non-sticky|original price|sale price|buy 1 get 1|regular price/i;
+const INSTRUCTION_ONLY_RE = /patch test|discontinue if|avoid any reactions|consult|how to use|directions/i;
 const ALLOWED_CLASSES = new Set(["community"]);
 const EXCLUDED_CLASSES = new Set(["brand", "affiliate", "editorial"]);
 
@@ -38,7 +39,8 @@ export function containsQuote(rawText: string, quote: string): boolean {
 export function looksLikeComplaint(text: string): boolean {
   const t = text || "";
   if (!NEGATIVE_RE.test(t)) return false;
-  if (POSITIVE_ONLY_RE.test(t) && !/but|however|problem|issue|not|no|worse|sting|irritat|fake|oxidiz|burn|rash|dry/i.test(t)) return false;
+  if (POSITIVE_ONLY_RE.test(t)) return false;
+  if (INSTRUCTION_ONLY_RE.test(t)) return false;
   return true;
 }
 
@@ -106,7 +108,9 @@ export async function extractGroundedGrievances(
         if (out.length >= maxTotal) break;
         if (!validSegments.has(g.segment)) continue;
         if (!containsQuote(src.rawText, g.verbatimQuote)) continue;
-        if (!looksLikeComplaint(`${g.verbatimQuote} ${g.anxiety}`)) continue;
+        // The quote itself must be complaint-like; do not let the LLM invent
+        // negativity in the distilled anxiety from a positive claim.
+        if (!looksLikeComplaint(g.verbatimQuote)) continue;
         out.push({
           segment: g.segment,
           anxiety: g.anxiety,

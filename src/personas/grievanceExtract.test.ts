@@ -26,6 +26,11 @@ test("looksLikeComplaint filters positives and keeps negative use experiences", 
   expect(looksLikeComplaint("this serum stings badly and caused irritation")).toBe(true);
   expect(looksLikeComplaint("I completely loved the visible results")).toBe(false);
   expect(looksLikeComplaint("Brightens Skin and promotes collagen")).toBe(false);
+  expect(looksLikeComplaint("Fades dark spots")).toBe(false);
+  expect(looksLikeComplaint("Non-sticky texture")).toBe(false);
+  expect(looksLikeComplaint("Discontinue if irritation occurs")).toBe(false);
+  expect(looksLikeComplaint("Slightly expensive")).toBe(true);
+  expect(looksLikeComplaint("May irritate sensitive skin")).toBe(true);
 });
 
 test("dedupe by normalized quote", () => {
