@@ -16,6 +16,8 @@ export interface PriceObservation {
   /** Price per single unit-of-measure (e.g. per g, per serving). */
   pricePerUnit?: number;
   subtype?: string; // e.g. tinted, medicated — model-tagged from plan subtypes
+  reviewCount?: number;
+  rating?: number;
 }
 
 export interface PriceBucket extends PriceBand {
@@ -156,10 +158,12 @@ async function extractObservations(llm: LLMClient, text: string, currency: strin
             `Currency: ${currency}. Extract EVERY distinct product with a price from the text.\n` +
             `JSON: { "observations": [ { "brand", "product", "retailer", "subtype", ` +
             `"mrp" (number, optional), "price" (number, current selling price), ` +
-            `"packSize" } ] }\n` +
+            `"packSize", "reviewCount" (number, optional), "rating" (0-5, optional) } ] }\n` +
             `packSize: copy the size/quantity EXACTLY as written whenever it appears ` +
             `(e.g. "17 gm", "4.2 g", "250 ml", "60 capsules"); use "" only if truly absent.\n` +
-            `Use selling price (not MRP) for "price". Whole numbers, no symbols.\n\n` +
+            `Use selling price (not MRP) for "price". Whole numbers, no symbols.\n` +
+            `Capture the star rating (0-5) and number of ratings/reviews when the listing ` +
+            `shows them; omit if absent (do not fabricate).\n\n` +
             `TEXT:\n${text.slice(0, 12000)}`,
         },
       ],
@@ -230,6 +234,8 @@ interface RawObs {
   mrp?: unknown;
   price?: unknown;
   packSize?: unknown;
+  reviewCount?: unknown;
+  rating?: unknown;
 }
 
 function normalizeObs(r: RawObs, uom: UnitOfMeasure): PriceObservation | null {
@@ -246,6 +252,8 @@ function normalizeObs(r: RawObs, uom: UnitOfMeasure): PriceObservation | null {
     packSize: r.packSize ? str(r.packSize).slice(0, 40) : undefined,
     unitQty: qty || undefined,
     pricePerUnit: qty ? round2(price / qty) : undefined,
+    reviewCount: num(r.reviewCount) || undefined,
+    rating: num(r.rating) || undefined,
   };
 }
 
