@@ -83,15 +83,22 @@ export async function tagWedges(
     raw = {};
   }
 
-  const byIndex = new Map<number, { wedge?: string; segment?: string; tier?: string }>();
+  const byIndex = new Map<number, { wedge?: unknown; segment?: unknown; tier?: unknown }>();
   for (const t of Array.isArray(raw?.tags) ? raw.tags : []) {
-    if (typeof t?.territoryIndex === "number") byIndex.set(t.territoryIndex, t);
+    if (
+      Number.isInteger(t?.territoryIndex) &&
+      t.territoryIndex >= 0 &&
+      t.territoryIndex < territories.length &&
+      !byIndex.has(t.territoryIndex)
+    ) {
+      byIndex.set(t.territoryIndex, t);
+    }
   }
 
   return territories.map((terr, i) => {
     const hit = byIndex.get(i);
-    const wedge = normSlug(hit?.wedge);
-    const segment = normSlug(hit?.segment);
+    const wedge = typeof hit?.wedge === "string" ? normSlug(hit.wedge) : "";
+    const segment = typeof hit?.segment === "string" ? normSlug(hit.segment) : "";
     if (!hit || !wedge || !segment) {
       return { territoryIndex: i, territoryName: terr.name, fingerprint: sentinel(i) };
     }
