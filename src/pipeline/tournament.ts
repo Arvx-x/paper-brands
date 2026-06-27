@@ -223,8 +223,9 @@ export function formatReport(out: TournamentOutput): string {
           `${div.rerolled ? " (re-rolled once)" : ""}. Win-rates compare near-duplicates.`,
       );
     } else {
+      const noun = div.distinctWedgeCount === 1 ? "wedge" : "wedges";
       lines.push(
-        `Concept diversity: ${div.distinctWedgeCount} of ${div.requested} distinct wedges ` +
+        `Concept diversity: ${div.distinctWedgeCount} of ${div.requested} distinct ${noun} ` +
           `[${div.spannedWedges.join(", ")}]${div.rerolled ? " (re-rolled once)" : ""}`,
       );
     }

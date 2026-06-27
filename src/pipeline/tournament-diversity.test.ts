@@ -25,6 +25,15 @@ test("healthy diversity -> 'N of M distinct wedges' line, no warning", () => {
   expect(txt).not.toContain("LOW CONCEPT DIVERSITY");
 });
 
+test("healthy diversity singularizes wedge", () => {
+  const txt = formatReport(baseOut({
+    requested: 1, distinctWedgeCount: 1, spannedWedges: ["clean"],
+    poolSize: 4, rerolled: false,
+  }));
+  expect(txt).toContain("Concept diversity: 1 of 1 distinct wedge");
+  expect(txt).not.toContain("distinct wedges");
+});
+
 test("collapsed diversity -> LOW CONCEPT DIVERSITY warning line", () => {
   const txt = formatReport(baseOut({
     requested: 4, distinctWedgeCount: 1, spannedWedges: ["clean"],
