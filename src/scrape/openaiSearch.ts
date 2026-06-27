@@ -3,6 +3,9 @@ import { loadConfig, resolveModel } from "../config.ts";
 export interface Citation {
   title: string;
   url: string;
+  /** Cleaned snippet from keyed search (e.g. Tavily) — fallback content when the
+   * page itself is bot-walled (Reddit). Optional. */
+  content?: string;
 }
 
 export interface ResearchResult {

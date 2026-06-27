@@ -68,7 +68,7 @@ async function pool<T>(items: T[], n: number, fn: (t: T, i: number) => Promise<v
  * effective sample size.
  */
 export async function buildSourceRegistry(
-  citations: { url: string; title?: string }[],
+  citations: { url: string; title?: string; content?: string }[],
   opts: { concurrency?: number; maxChars?: number; timeoutMs?: number; maxSources?: number } = {},
 ): Promise<SourceDoc[]> {
   // Dedup requested URLs first (cheap), then fetch, then dedup again by finalUrl.
@@ -79,7 +79,16 @@ export async function buildSourceRegistry(
 
   const fetched: { page: FetchedPage; title: string }[] = [];
   await pool(uniqueRequested, opts.concurrency ?? 6, async (c) => {
-    const page = await fetchPage(c.url, { maxChars: opts.maxChars, timeoutMs: opts.timeoutMs });
+    let page = await fetchPage(c.url, { maxChars: opts.maxChars, timeoutMs: opts.timeoutMs });
+    // Bot walls sometimes return 200 with a short "please verify" stub. Treat a failed
+    // fetch OR a suspiciously short/blocked body as fetch-failed, and fall back to the
+    // keyed-search (Tavily) snippet content when we have it. This is how Reddit (403 /
+    // verification wall) still contributes its real complaint text.
+    const blocked = /please wait for verification|enable javascript|are you a robot|access denied/i.test(page.text);
+    const tooShort = page.text.trim().length < 120;
+    if ((!page.ok || blocked || tooShort) && c.content && c.content.trim().length > 40) {
+      page = { ...page, text: c.content.trim().slice(0, opts.maxChars ?? 12000), ok: true };
+    }
     fetched.push({ page, title: c.title ?? "" });
   });
 

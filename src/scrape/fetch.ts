@@ -10,6 +10,7 @@
  * are recorded as coverage gaps, never thrown.
  */
 
+import { fetchReadable } from "./http.ts";
 import { extractJsonLdReviews, redditCommentText, youtubeVideoId, parseTimedTextXml, extractNextDataReviews } from "./extract.ts";
 
 export interface FetchedPage {
@@ -107,39 +108,6 @@ async function fetchRedditJson(
   }
 }
 
-/**
- * YouTube blocks scraping the watch page, but the free, no-key `timedtext` caption
- * endpoint returns the transcript XML. Review videos ("I tried X for 30 days") are a
- * rich free source of first-hand product experience.
- */
-async function fetchYouTubeTranscript(
-  requestedUrl: string,
-  videoId: string,
-  signal: AbortSignal,
-  maxChars: number,
-): Promise<FetchedPage | null> {
-  // Try a few common caption tracks (manual EN, ASR EN, generic).
-  const urls = [
-    `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`,
-    `https://www.youtube.com/api/timedtext?lang=en&kind=asr&v=${videoId}`,
-    `https://video.google.com/timedtext?lang=en&v=${videoId}`,
-  ];
-  for (const u of urls) {
-    try {
-      const res = await fetch(u, { redirect: "follow", signal, headers: { "User-Agent": UA } });
-      if (!res.ok) continue;
-      const xml = await res.text();
-      const text = parseTimedTextXml(xml).slice(0, Math.max(maxChars, 12000));
-      if (text.length > 0) {
-        return { requestedUrl, finalUrl: requestedUrl, domain: "youtube.com", status: res.status, text, ok: true };
-      }
-    } catch {
-      /* try next track */
-    }
-  }
-  return null;
-}
-
 export async function fetchPage(
   url: string,
   opts: { timeoutMs?: number; maxChars?: number } = {},
@@ -157,10 +125,11 @@ export async function fetchPage(
     }
     const ytId = youtubeVideoId(target);
     if (ytId) {
-      const r = await fetchYouTubeTranscript(requestedUrl, ytId, ctrl.signal, maxChars);
-      // YouTube watch pages are nav chrome, not review text — only the transcript is useful.
-      // If the no-key timedtext endpoint returns nothing, fail rather than scrape the page.
-      return r ?? { requestedUrl, finalUrl: requestedUrl, domain: "youtube.com", status: 0, text: "", ok: false };
+      // Direct watch-page fetch is nav chrome and the no-key timedtext endpoint is gated.
+      // The Jina reader renders the page (transcript + description + comments) reliably.
+      const md = await fetchReadable(target).catch(() => "");
+      const text = (md || "").replace(/\s+/g, " ").trim().slice(0, Math.max(maxChars, 12000));
+      return { requestedUrl, finalUrl: target, domain: "youtube.com", status: text ? 200 : 0, text, ok: text.length > 200 };
     }
     const res = await fetch(target, {
       redirect: "follow",

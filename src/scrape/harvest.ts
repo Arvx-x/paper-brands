@@ -21,7 +21,7 @@ export interface LensFinding {
   lens: string;
   query: string;
   content: string;
-  citations: { url: string; title: string }[];
+  citations: { url: string; title: string; content?: string }[];
 }
 
 /** Per-lens evidence coverage — makes silent query failures visible. */

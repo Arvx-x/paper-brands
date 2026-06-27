@@ -23,7 +23,7 @@ export function mergeResearch(
   web: SearchResult[],
 ): ResearchResult {
   const seen = new Set<string>();
-  const citations: { url: string; title: string }[] = [];
+  const citations: { url: string; title: string; content?: string }[] = [];
   const contents: string[] = [];
 
   for (const r of results) {
@@ -36,14 +36,15 @@ export function mergeResearch(
   }
 
   for (const w of web) {
+    const snippet = (w.snippet ?? "").trim();
     if (!seen.has(w.url)) {
       seen.add(w.url);
-      citations.push({ url: w.url, title: w.title });
+      // Carry the cleaned snippet as citation content: bot-walled domains (Reddit)
+      // 403 on direct fetch, so this snippet becomes their source text downstream.
+      citations.push({ url: w.url, title: w.title, content: snippet || undefined });
     }
-    // Tavily returns cleaned content in `snippet` — append so it is quotable.
-    if (w.snippet && w.snippet.trim().length > 0) {
-      contents.push(`[${w.title}] ${w.snippet}`);
-    }
+    // Also append to the merged finding content so it's quotable in aggregate.
+    if (snippet.length > 0) contents.push(`[${w.title}] ${snippet}`);
   }
 
   return { query, content: contents.join("\n\n"), citations };
