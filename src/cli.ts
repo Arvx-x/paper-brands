@@ -503,7 +503,7 @@ switch (cmd) {
       `paper-brands\n\n` +
         `Usage:\n` +
         `  bun run intel       --category="..." --geo="..." --currency=INR\n` +
-        `  bun run tournament  --category=lipcare --candidates=4 --cohort=40 --out=out\n` +
+        `  bun run tournament  --category=lipcare --candidates=4 --cohort=40 --out=out [--mode=cheap|deep] [--moat]\n` +
         `  bun run winrate     --category=lipcare --candidates=4 --cohort=40\n` +
         `  bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5\n` +
         `  bun run creative    --category=lipcare --assets=ad-square,ad-story --research --rounds=3\n` +
