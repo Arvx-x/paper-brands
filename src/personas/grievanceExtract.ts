@@ -39,3 +39,63 @@ export function dedupeByQuote<T extends { verbatimQuote: string }>(items: T[]): 
   }
   return out;
 }
+
+const ExtractSchema = z.object({
+  grievances: z.array(z.object({
+    anxiety: z.string(),
+    verbatimQuote: z.string(),
+    segment: z.string(),
+  })).default([]),
+});
+
+function chunkText(s: string, max = 8000): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < s.length; i += max) chunks.push(s.slice(i, i + max));
+  return chunks;
+}
+
+export interface ExtractOpts { maxTotal?: number; maxPerChunk?: number }
+
+export async function extractGroundedGrievances(
+  sources: SourceDoc[],
+  segments: { seed: string }[],
+  llm = new LLMClient(),
+  opts: ExtractOpts = {},
+): Promise<GroundedGrievance[]> {
+  const maxTotal = opts.maxTotal ?? Number(process.env.PB_GRIEVANCE_MAX ?? "100");
+  const maxPerChunk = opts.maxPerChunk ?? 8;
+  const validSegments = new Set(segments.map((s) => s.seed));
+  if (!sources.length || !validSegments.size) return [];
+
+  const out: GroundedGrievance[] = [];
+  for (const src of sources.filter(shouldUseSourceForGrievances)) {
+    for (const chunk of chunkText(src.rawText || "")) {
+      if (out.length >= maxTotal) break;
+      const raw = await llm.completeJson<unknown>({
+        temperature: 0,
+        messages: [
+          { role: "system", content: "Extract concrete shopper complaints/anxieties from raw review text. Copy verbatimQuote EXACTLY from the text. Return JSON only." },
+          { role: "user", content:
+            `Segments (must use exact one):\n- ${segments.map((s) => s.seed).join("\n- ")}\n\n` +
+            `Return at most ${maxPerChunk} product-use or purchase-decision complaints. ` +
+            `JSON: { "grievances": [ { "anxiety", "verbatimQuote", "segment" } ] }\n\nTEXT:\n${chunk}` },
+        ],
+      }).catch(() => ({ grievances: [] }));
+      const parsed = ExtractSchema.parse(raw).grievances;
+      for (const g of parsed) {
+        if (out.length >= maxTotal) break;
+        if (!validSegments.has(g.segment)) continue;
+        if (!containsQuote(src.rawText, g.verbatimQuote)) continue;
+        out.push({
+          segment: g.segment,
+          anxiety: g.anxiety,
+          verbatimQuote: g.verbatimQuote,
+          sourceUrl: src.finalUrl,
+          sourceClass: src.sourceClass,
+          verified: true,
+        });
+      }
+    }
+  }
+  return dedupeByQuote(out).slice(0, maxTotal);
+}

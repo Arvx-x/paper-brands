@@ -28,3 +28,27 @@ test("dedupe by normalized quote", () => {
   ];
   expect(dedupeByQuote(items).map((i) => i.verbatimQuote)).toEqual(["It stings badly!", "turned orange"]);
 });
+import { extractGroundedGrievances } from "./grievanceExtract.ts";
+
+const fakeLlm = {
+  completeJson: async () => ({ grievances: [
+    { anxiety: "stinging fear", verbatimQuote: "serum stings badly", segment: "sensitive skin buyer" },
+    { anxiety: "hallucinated", verbatimQuote: "not in source", segment: "sensitive skin buyer" },
+    { anxiety: "bad segment", verbatimQuote: "turned orange", segment: "wrong segment" },
+  ] }),
+} as any;
+
+test("extractGroundedGrievances keeps only contained quotes with valid segments", async () => {
+  const sources = [{ finalUrl: "u", sourceClass: "marketplace", independent: false, rawText: "This serum stings badly and turned orange fast." }] as any;
+  const out = await extractGroundedGrievances(sources, [{ seed: "sensitive skin buyer" }], fakeLlm, { maxTotal: 10 });
+  expect(out).toHaveLength(1);
+  expect(out[0]!.verified).toBe(true);
+  expect(out[0]!.anxiety).toBe("stinging fear");
+  expect(out[0]!.sourceUrl).toBe("u");
+  expect(out[0]!.sourceClass).toBe("marketplace");
+});
+
+test("extractGroundedGrievances returns [] when no usable sources", async () => {
+  const out = await extractGroundedGrievances([{ finalUrl: "u", sourceClass: "brand", independent: false, rawText: "stings" }] as any, [{ seed: "s" }], fakeLlm);
+  expect(out).toEqual([]);
+});
