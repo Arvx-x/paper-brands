@@ -2,7 +2,9 @@ import { z } from "zod";
 import { LLMClient } from "../llm/client.ts";
 import type { GroundedGrievance } from "../categories/types.ts";
 
-const MARKER_RE = /complain|doesn\'?t work|sting|irritat|fake|oxidiz|breakout|no results?|refund|waste|burn|rash|smell|texture|sticky|greasy|pricey|expensive|allerg|redness|watery|leak|broke|changed colour|turned orange|dark spot/i;
+const NEGATIVE_RE = /complain|doesn\'?t work|sting|irritat|fake|oxidiz|breakout|no results?|refund|waste|burn|rash|smell|texture|sticky|greasy|pricey|expensive|allerg|redness|watery|leak|broke|changed colour|turned orange|dark spot|darken|ineffective|worse|dry|peel/i;
+const REVIEW_CONTEXT_RE = /review|reviews|customer|verified buyer|rated|stars?|write a review|user said|buyers say/i;
+const POSITIVE_ONLY_RE = /loved|visible results|highly effective|works well|amazing|excellent|happy to see|clear in|brightens skin|hydrates|moisturi[sz]es|promotes collagen/i;
 const ALLOWED_CLASSES = new Set(["community"]);
 const EXCLUDED_CLASSES = new Set(["brand", "affiliate", "editorial"]);
 
@@ -15,11 +17,13 @@ export interface GrievanceSource {
 
 export function shouldUseSourceForGrievances(s: Pick<GrievanceSource, "sourceClass" | "rawText">): boolean {
   const cls = String(s.sourceClass);
+  const text = s.rawText || "";
   if (ALLOWED_CLASSES.has(cls)) return true;
   if (EXCLUDED_CLASSES.has(cls)) return false;
-  // Marketplace/unknown pages often contain product claims/promos; include only when
-  // raw text has explicit negative complaint markers.
-  return MARKER_RE.test(s.rawText || "");
+  if (cls === "marketplace") return NEGATIVE_RE.test(text);
+  // Unknown pages include many product/education pages. Use them only when they look
+  // like review/customer text AND contain negative complaint markers.
+  return NEGATIVE_RE.test(text) && REVIEW_CONTEXT_RE.test(text);
 }
 
 function norm(s: string): string {
@@ -29,6 +33,13 @@ function norm(s: string): string {
 export function containsQuote(rawText: string, quote: string): boolean {
   const q = norm(quote);
   return q.length > 8 && norm(rawText).includes(q);
+}
+
+export function looksLikeComplaint(text: string): boolean {
+  const t = text || "";
+  if (!NEGATIVE_RE.test(t)) return false;
+  if (POSITIVE_ONLY_RE.test(t) && !/but|however|problem|issue|not|no|worse|sting|irritat|fake|oxidiz|burn|rash|dry/i.test(t)) return false;
+  return true;
 }
 
 export interface ExtractedGrievance {
@@ -83,10 +94,10 @@ export async function extractGroundedGrievances(
       const raw = await llm.completeJson<unknown>({
         temperature: 0,
         messages: [
-          { role: "system", content: "Extract ONLY negative shopper complaints/anxieties from raw review text. Do NOT extract positive product claims, benefits, prices, promotions, FAQs, or instructions unless they are inside a negative customer complaint. Copy verbatimQuote EXACTLY from the text. Return JSON only." },
+          { role: "system", content: "Extract ONLY NEGATIVE first-hand shopper complaints/anxieties from raw review text. Do NOT extract positive product claims, benefits, educational advice, prices, promotions, FAQs, or instructions. A valid item must describe a problem, disappointment, irritation, no result, fake/oxidized product, bad texture/smell, high price concern, or similar negative purchase/use experience. Copy verbatimQuote EXACTLY from the text. Return JSON only." },
           { role: "user", content:
             `Segments (must use exact one):\n- ${segments.map((s) => s.seed).join("\n- ")}\n\n` +
-            `Return at most ${maxPerChunk} product-use or purchase-decision complaints. Exclude generic benefits like brightens/hydrates/reduces wrinkles unless a shopper says they failed or caused a problem. ` +
+            `Return at most ${maxPerChunk} product-use or purchase-decision complaints. Exclude generic benefits like brightens/hydrates/reduces wrinkles, educational statements about ingredients, or positive reviews unless the same quote states they failed, caused irritation, or created a concrete problem. ` +
             `JSON: { "grievances": [ { "anxiety", "verbatimQuote", "segment" } ] }\n\nTEXT:\n${chunk}` },
         ],
       }).catch(() => ({ grievances: [] }));
@@ -95,6 +106,7 @@ export async function extractGroundedGrievances(
         if (out.length >= maxTotal) break;
         if (!validSegments.has(g.segment)) continue;
         if (!containsQuote(src.rawText, g.verbatimQuote)) continue;
+        if (!looksLikeComplaint(`${g.verbatimQuote} ${g.anxiety}`)) continue;
         out.push({
           segment: g.segment,
           anxiety: g.anxiety,
