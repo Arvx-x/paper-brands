@@ -10,12 +10,14 @@ export interface Grades {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const g01 = (v: number) => clamp(Number(v) || 0, 0, 10) / 10;
+const num = (v: number, fallback = 0) => (Number.isFinite(v) ? v : fallback);
 
 export function computeWtp(
   t: EngineTraits,
   grades: Grades,
   cumulativePressure: number,
 ): { wtp: number; breakdown: { trustGain: number; valueGain: number; impulseGain: number; pressurePenalty: number } } {
+  cumulativePressure = num(cumulativePressure, 0);
   const base = t.basePMax;
   const trauma = g01(grades.traumaResolutionScore);
   const value = g01(grades.valueScore);
@@ -49,6 +51,7 @@ export function decide(
   cumulativePressure: number,
   rng: () => number,
 ): Decision {
+  wtp = num(wtp, 0); price = num(price, Infinity); cumulativePressure = num(cumulativePressure, 0);
   if (price > wtp) return { decision: "PUSH_BACK", conviction: 0 };
 
   const value = g01(grades.valueScore);
@@ -61,6 +64,7 @@ export function decide(
 
   const wantsOut = grades.desiredAction === "WALKING_AWAY";
 
+  // Final turn (4 of 4): must resolve to BUY or REJECT — no more deliberation.
   if (turn >= 4) {
     return rng() < conviction ? { decision: "BUY", conviction } : { decision: "REJECT", conviction };
   }
