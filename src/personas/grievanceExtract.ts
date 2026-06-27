@@ -2,8 +2,8 @@ import { z } from "zod";
 import { LLMClient } from "../llm/client.ts";
 import type { GroundedGrievance } from "../categories/types.ts";
 
-const MARKER_RE = /review|rating|stars?|complain|doesn'?t work|sting|irritat|fake|oxidiz|breakout|no results?|refund|waste|burn|rash|smell|texture/i;
-const ALLOWED_CLASSES = new Set(["marketplace", "community"]);
+const MARKER_RE = /complain|doesn\'?t work|sting|irritat|fake|oxidiz|breakout|no results?|refund|waste|burn|rash|smell|texture|sticky|greasy|pricey|expensive|allerg|redness|watery|leak|broke|changed colour|turned orange|dark spot/i;
+const ALLOWED_CLASSES = new Set(["community"]);
 const EXCLUDED_CLASSES = new Set(["brand", "affiliate", "editorial"]);
 
 export interface GrievanceSource {
@@ -14,8 +14,11 @@ export interface GrievanceSource {
 }
 
 export function shouldUseSourceForGrievances(s: Pick<GrievanceSource, "sourceClass" | "rawText">): boolean {
-  if (ALLOWED_CLASSES.has(String(s.sourceClass))) return true;
-  if (EXCLUDED_CLASSES.has(String(s.sourceClass))) return false;
+  const cls = String(s.sourceClass);
+  if (ALLOWED_CLASSES.has(cls)) return true;
+  if (EXCLUDED_CLASSES.has(cls)) return false;
+  // Marketplace/unknown pages often contain product claims/promos; include only when
+  // raw text has explicit negative complaint markers.
   return MARKER_RE.test(s.rawText || "");
 }
 
@@ -80,10 +83,10 @@ export async function extractGroundedGrievances(
       const raw = await llm.completeJson<unknown>({
         temperature: 0,
         messages: [
-          { role: "system", content: "Extract concrete shopper complaints/anxieties from raw review text. Copy verbatimQuote EXACTLY from the text. Return JSON only." },
+          { role: "system", content: "Extract ONLY negative shopper complaints/anxieties from raw review text. Do NOT extract positive product claims, benefits, prices, promotions, FAQs, or instructions unless they are inside a negative customer complaint. Copy verbatimQuote EXACTLY from the text. Return JSON only." },
           { role: "user", content:
             `Segments (must use exact one):\n- ${segments.map((s) => s.seed).join("\n- ")}\n\n` +
-            `Return at most ${maxPerChunk} product-use or purchase-decision complaints. ` +
+            `Return at most ${maxPerChunk} product-use or purchase-decision complaints. Exclude generic benefits like brightens/hydrates/reduces wrinkles unless a shopper says they failed or caused a problem. ` +
             `JSON: { "grievances": [ { "anxiety", "verbatimQuote", "segment" } ] }\n\nTEXT:\n${chunk}` },
         ],
       }).catch(() => ({ grievances: [] }));

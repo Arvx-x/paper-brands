@@ -3,9 +3,10 @@ import { shouldUseSourceForGrievances, containsQuote, dedupeByQuote } from "./gr
 
 const src = (sourceClass: string, rawText: string) => ({ finalUrl: "u", sourceClass, independent: sourceClass === "community", rawText }) as any;
 
-test("source filtering includes marketplace/community and excludes brand/editorial", () => {
-  expect(shouldUseSourceForGrievances(src("marketplace", "anything"))).toBe(true);
+test("source filtering includes community, and marketplace only with negative complaint markers", () => {
   expect(shouldUseSourceForGrievances(src("community", "anything"))).toBe(true);
+  expect(shouldUseSourceForGrievances(src("marketplace", "this serum stings and caused irritation"))).toBe(true);
+  expect(shouldUseSourceForGrievances(src("marketplace", "brightens skin and hydrates"))).toBe(false);
   expect(shouldUseSourceForGrievances(src("brand", "review stings"))).toBe(false);
   expect(shouldUseSourceForGrievances(src("editorial", "review stings"))).toBe(false);
 });
