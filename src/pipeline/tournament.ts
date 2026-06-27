@@ -10,6 +10,16 @@ import type { BrandConcept } from "../brand/types.ts";
 import { calibrate } from "../calibration/calibrate.ts";
 import type { CalibrationResult } from "../calibration/types.ts";
 import type { DiversityReport } from "../council/diversity.ts";
+import type { BuyerArena } from "../arena/types.ts";
+import type { CategoryPack } from "../categories/types.ts";
+
+export type ArenaMode = "cheap" | "deep";
+
+export interface ArenaModeInfo {
+  mode: ArenaMode;
+  kind: "single-shot" | "deep-negotiation";
+  costClass: "cheap" | "expensive";
+}
 
 export interface TournamentOptions {
   categoryId: string;
@@ -17,6 +27,7 @@ export interface TournamentOptions {
   cohortSize: number;
   outDir?: string;
   deep?: boolean;   // use the deep negotiation arena
+  mode?: ArenaMode;
   seed?: number;
   runs?: number;    // replications across seeds for cross-run variance (default 1)
 }
@@ -50,6 +61,16 @@ export function aggregateRunStats(winRates: number[]): RunStats {
     meanWinRate: mean(winRates),
     stdWinRate: stddev(winRates),
   };
+}
+
+/** Resolve the arena from the requested mode. Default "deep"; `deep:true` is a legacy alias. */
+export function resolveArena(
+  pack: CategoryPack,
+  opts: Pick<TournamentOptions, "mode" | "deep">,
+): { arena: BuyerArena; arenaMode: ArenaModeInfo } {
+  const mode: ArenaMode = opts.mode ?? "deep";
+  const arena: BuyerArena = mode === "cheap" ? new SingleShotArena(pack) : new DeepNegotiationArena(pack);
+  return { arena, arenaMode: { mode, kind: arena.kind, costClass: arena.costClass } };
 }
 
 export async function runTournament(opts: TournamentOptions): Promise<TournamentOutput> {
