@@ -76,7 +76,10 @@ export function fitCalibration(observations: CalibrationObservation[]): Calibrat
     const cxy = Sxy - (Sx * Sy) / n;
     const cey = Sey - (Se * Sy) / n;
     const det = cxx * cee - cxe * cxe;
-    if (cee === 0 || Math.abs(det) < 1e-9 * (cxx * cee + 1e-12)) return null; // no equity variance / collinear
+    // Float-robust: gate equity variance RELATIVE to its raw scale (independent of the
+    // degenerate det magnitude), then guard collinearity via the correlation determinant.
+    const EPS = 1e-9;
+    if (cee < EPS * Math.max(See, 1) || Math.abs(det) < EPS * cxx * cee) return null; // no equity variance / collinear
     const a = (cee * cxy - cxe * cey) / det;
     const b = (cxx * cey - cxe * cxy) / det;
     const c = (Sy - a * Sx - b * Se) / n;
@@ -115,7 +118,8 @@ export function fitCalibration(observations: CalibrationObservation[]): Calibrat
     status, method, n, r2, residualRmse: rmse, realMetric, equityStatus, warnings,
     apply(raw, equityScore) {
       const appeal = a * raw + c;
-      const equityContribution = method === "bivariate" && typeof equityScore === "number" ? b * equityScore : 0;
+      const eq = Number.isFinite(equityScore) ? (equityScore as number) : undefined;
+      const equityContribution = method === "bivariate" && eq !== undefined ? b * eq : 0;
       const estimate = appeal + equityContribution;
       const calibrated = clamp01(estimate);
       const half = Z * rmse * widen;

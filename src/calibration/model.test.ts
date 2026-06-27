@@ -121,3 +121,36 @@ test("apply(raw, equity) never mutates raw", () => {
   const data = rows.map(([s, e]) => obs(s, 0.06 * s + 0.09 * e, { equityScore: e }));
   expect(fitCalibration(data).apply(0.4, 0.5).raw).toBe(0.4);
 });
+
+test("constant equity at n=3 -> not-learned (float-robust guard)", () => {
+  const data = [0.2, 0.4, 0.6].map((s) => obs(s, 0.08 * s - 0.004, { equityScore: 0.3 }));
+  const fit = fitCalibration(data);
+  expect(fit.equityStatus).toBe("not-learned");
+  expect(fit.method).toBe("linear");
+  expect(fit.apply(0.5, 0.3).equityContribution).toBe(0);
+});
+
+test("constant equity at n=5 -> not-learned (float-robust guard)", () => {
+  const data = [0.2, 0.4, 0.6, 0.8, 0.5].map((s) => obs(s, 0.08 * s - 0.004, { equityScore: 0.3 }));
+  const fit = fitCalibration(data);
+  expect(fit.equityStatus).toBe("not-learned");
+  expect(fit.method).toBe("linear");
+  expect(fit.apply(0.5, 0.3).equityContribution).toBe(0);
+});
+
+test("apply with NaN equity -> no NaN escapes, equity ignored", () => {
+  const rows: [number, number][] = [[0.2, 0.1], [0.4, 0.5], [0.6, 0.2], [0.8, 0.7]];
+  const data = rows.map(([s, e]) => obs(s, 0.06 * s + 0.09 * e, { equityScore: e }));
+  const r = fitCalibration(data).apply(0.5, NaN);
+  expect(Number.isFinite(r.calibrated)).toBe(true);
+  expect(r.calibrated).toBeGreaterThanOrEqual(0);
+  expect(r.calibrated).toBeLessThanOrEqual(1);
+  expect(r.equityContribution).toBe(0);
+});
+
+test("univariate fit ignores equityScore passed to apply", () => {
+  const data = [0.2, 0.4, 0.6, 0.8].map((s) => obs(s, 0.08 * s - 0.004)); // no equity recorded
+  const fit = fitCalibration(data);
+  expect(fit.method).toBe("linear");
+  expect(fit.apply(0.5, 0.9).equityContribution).toBe(0);
+});
