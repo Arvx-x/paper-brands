@@ -9,6 +9,7 @@ export const PersonaSchema = z.object({
   name: z.string(),
   age: z.coerce.number(),
   context: z.string().describe("life context driving the purchase"),
+  // Case/whitespace-tolerant: models (esp. Gemini) often return "Medium".
   budgetSensitivity: z
     .preprocess(
       (v) => (typeof v === "string" ? v.trim().toLowerCase() : v),
@@ -79,7 +80,7 @@ export async function buildCohort(
 
       // Build the grounding note injected into the prompt.
       const grievanceLines = sampled
-        .map((g, i) => `  Persona ${i + 1} concern: '${g.anxiety}'`)
+        .map((g, i) => `  Persona ${i + 1}: <concern>${g.anxiety}</concern>`)
         .join("\n");
       const groundingNote = pool.length
         ? `Ground each persona in a REAL shopper concern listed below. ` +
@@ -119,7 +120,7 @@ export async function buildCohort(
   const groundingCoverage = personas.length
     ? Math.min(grounded, personas.length) / personas.length
     : 0;
-  const diversity = cohortDiversity(personas.map((p) => p.anxieties.join("|")));
+  const diversity = cohortDiversity(personas.map((p) => p.anxieties.join("\0")));
 
   return { personas, groundingCoverage, cohortDiversity: diversity };
 }
