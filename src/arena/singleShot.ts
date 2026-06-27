@@ -55,6 +55,7 @@ export class SingleShotArena implements BuyerArena {
 
   async run(input: ArenaInput): Promise<MatchResult[]> {
     const { candidates, cohort } = input;
+    const pack = input.pack ?? this.pack;
     const includeCompetitors = input.opts?.includeCompetitors ?? true;
 
     // Stable label -> conceptId map (built per-trial because order shuffles).
@@ -68,9 +69,9 @@ export class SingleShotArena implements BuyerArena {
         entries.push({ card: cardFromConcept(c, label), conceptId: c.id });
       });
       if (includeCompetitors) {
-        this.pack.competitorArchetypes.forEach((a, i) => {
+        pack.competitorArchetypes.forEach((a, i) => {
           const label = `OPTION-${String.fromCharCode(65 + candidates.length + i)}`;
-          const price = midPrice(this.pack, a.pricePositioning);
+          const price = midPrice(pack, a.pricePositioning);
           entries.push({
             card: cardFromArchetype(a, label, price),
             conceptId: `competitor:${a.codeName}`,
@@ -79,7 +80,7 @@ export class SingleShotArena implements BuyerArena {
       }
       const slate = shuffle(entries);
 
-      const choice = await this.ask(persona, slate.map((e) => e.card)).catch(() => null);
+      const choice = await this.ask(persona, slate.map((e) => e.card), pack.currency).catch(() => null);
       if (!choice) {
         results.push({
           personaId: persona.id, segment: persona.segment, pickedConceptId: "",
@@ -103,8 +104,8 @@ export class SingleShotArena implements BuyerArena {
     return results;
   }
 
-  private async ask(persona: Persona, cards: BlindCard[]): Promise<Choice> {
-    const slate = cards.map((c) => `${c.label}: ${c.pitch || renderPitchFlat(c, this.pack.currency)}`).join("\n");
+  private async ask(persona: Persona, cards: BlindCard[], currency: string): Promise<Choice> {
+    const slate = cards.map((c) => `${c.label}: ${renderPitchFlat(c, currency)}`).join("\n");
     return this.llm.completeJson<Choice>({
       model: loadConfig().simModel,
       temperature: 0.7,
@@ -122,7 +123,7 @@ export class SingleShotArena implements BuyerArena {
             `You are ${persona.shoppingContext}. These are unbranded options ` +
             `(names hidden on purpose). Pick exactly ONE you would actually buy.\n\n` +
             `${slate}\n\n` +
-            `Return JSON: { "pick": "OPTION-x", "willingnessToPay": <whole ${this.pack.currency}>, ` +
+            `Return JSON: { "pick": "OPTION-x", "willingnessToPay": <whole ${currency}>, ` +
             `"reason": "...", "topObjection": "..." }`,
         },
       ],

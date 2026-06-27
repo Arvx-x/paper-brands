@@ -1,6 +1,6 @@
 import type { BlindCard, BrandConcept } from "../brand/types.ts";
 import type { CompetitorArchetype } from "../categories/types.ts";
-import { normalizeLen, renderPitchFlat } from "./card.ts";
+import { normalizeLen } from "./card.ts";
 
 // Word budgets keep all cards comparable so the buyer can't pick on verbosity.
 const HEAD = 12, BODY = 40;
@@ -13,7 +13,6 @@ export function cardFromConcept(c: BrandConcept, label: string): BlindCard {
     label, headline, body, claims: c.claims.slice(0, 5),
     format: c.heroSku, priceMinor: c.priceMinor, pitch: "",
   };
-  card.pitch = renderPitchFlat(card, "");
   return card;
 }
 
@@ -30,6 +29,5 @@ export function cardFromArchetype(
     label, headline, body, claims: a.claims.slice(0, 5),
     format: "standard", priceMinor, pitch: "",
   };
-  card.pitch = renderPitchFlat(card, "");
   return card;
 }
