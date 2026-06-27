@@ -17,8 +17,10 @@ export interface SmokeExperiment {
   concepts: SmokeConcept[];
 }
 
+// SmokeResultRow: shape of one row in the operator-filled results CSV.
+// Used as documentation; parseResultsCsv reads raw CSV strings directly.
 export interface SmokeResultRow {
   conceptId: string;
-  pageVisitors: number;
-  notifyClicks: number;
+  pageVisitors: number;  // denominator: unique page visitors
+  notifyClicks: number;  // numerator: notify-me button clicks
 }

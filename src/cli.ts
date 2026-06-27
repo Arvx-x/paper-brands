@@ -478,6 +478,7 @@ switch (cmd) {
     for (const obs of parsed.observations) await store.record(obs);
     console.log(`recorded ${parsed.observations.length} / skipped ${parsed.skipped.length}`);
     for (const s of parsed.skipped) console.log(`  skip ${s.conceptId}: ${s.reason}`);
+    console.log(`Calibration observations written to data/${category}/calibration.json (default root, independent of --out).`);
     console.log(`Next: bun run calibrate:status --category=${category}`);
     break;
   }

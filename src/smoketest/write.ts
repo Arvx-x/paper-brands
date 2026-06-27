@@ -2,13 +2,10 @@ import { mkdir } from "node:fs/promises";
 import type { BrandConcept } from "../brand/types.ts";
 import type { SmokeExperiment } from "./types.ts";
 import { renderPdpPage } from "./page.ts";
-
-function slug(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
+import { slugify } from "./experiment.ts";
 
 function dirFor(category: string, baseDir: string): string {
-  return `${baseDir}/${slug(category)}/smoketest`;
+  return `${baseDir}/${slugify(category)}/smoketest`;
 }
 
 export async function writeExperiment(
