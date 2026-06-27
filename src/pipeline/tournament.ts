@@ -12,6 +12,9 @@ import type { CalibrationResult } from "../calibration/types.ts";
 import type { DiversityReport } from "../council/diversity.ts";
 import type { BuyerArena } from "../arena/types.ts";
 import type { CategoryPack } from "../categories/types.ts";
+import { scoreMoat } from "../moat/rubric.ts";
+import type { MoatReport } from "../moat/types.ts";
+import { LLMClient } from "../llm/client.ts";
 
 export type ArenaMode = "cheap" | "deep";
 
@@ -28,6 +31,7 @@ export interface TournamentOptions {
   outDir?: string;
   deep?: boolean;   // use the deep negotiation arena
   mode?: ArenaMode;
+  moat?: boolean;
   seed?: number;
   runs?: number;    // replications across seeds for cross-run variance (default 1)
 }
@@ -49,6 +53,7 @@ export interface TournamentOutput {
   calibration?: CalibrationResult;
   conceptDiversity?: DiversityReport;
   arenaMode?: ArenaModeInfo;
+  moat?: MoatReport;
 }
 
 /**
@@ -129,7 +134,17 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   const winRateForCal = report.winner?.winRate ?? report.candidateShareVsField ?? 0;
   const calibration = await calibrate(opts.categoryId, winRateForCal);
 
-  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity, calibration, conceptDiversity, arenaMode };
+  let moat: MoatReport | undefined;
+  if (opts.moat) {
+    const moatScores = await scoreMoat(concepts, pack, new LLMClient());
+    moat = {
+      scored: moatScores.filter((m) => m.warnings.length === 0).length,
+      concepts: [...moatScores].sort((a, b) => b.overall - a.overall),
+      degraded: moatScores.some((m) => m.warnings.length > 0),
+    };
+  }
+
+  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity, calibration, conceptDiversity, arenaMode, moat };
 
   if (opts.outDir) {
     await mkdir(opts.outDir, { recursive: true });
@@ -254,6 +269,21 @@ export function formatReport(out: TournamentOutput): string {
           `[wedges: ${div.spannedWedges.join(", ")}]${div.rerolled ? " (re-rolled once)" : ""}`,
       );
     }
+  }
+  const moatRep = out.moat;
+  if (moatRep) {
+    lines.push(`\nMoat (defensibility, opt-in):`);
+    for (const m of moatRep.concepts) {
+      const by = (n: string) => m.axes.find((a) => a.name === n)?.score ?? 0;
+      lines.push(
+        `  ${m.name.padEnd(22)} overall ${m.overall.toFixed(2)}  ` +
+          `[copy ${by("copyability").toFixed(2)} · insight ${by("proprietaryInsight").toFixed(2)} · ` +
+          `wedge ${by("distributionWedge").toFixed(2)} · trust ${by("brandTrustDurability").toFixed(2)}]`,
+      );
+      const copy = m.axes.find((a) => a.name === "copyability");
+      if (copy) lines.push(`    copyability: ${copy.rationale}`);
+    }
+    if (moatRep.degraded) lines.push(`\u26a0 moat degraded \u2014 some axes defaulted to neutral (see warnings).`);
   }
   if (out.runStats) {
     const s = out.runStats;
