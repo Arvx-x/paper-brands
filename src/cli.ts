@@ -137,6 +137,7 @@ switch (cmd) {
     let evidence: string | undefined;
     let sources: { finalUrl: string; sourceClass: string; independent: boolean; rawText: string }[] | undefined;
     let priceBands: Corpus["price"]["bands"] | undefined;
+    let observations: Corpus["price"]["observations"] | undefined;
     let marketSignal: string | undefined;
     let competitorClusters: ReturnType<typeof clusterCompetitors> | undefined;
     let provenance: Provenance | undefined;
@@ -156,6 +157,7 @@ switch (cmd) {
         .filter((s) => s.fetched)
         .map((s) => ({ finalUrl: s.finalUrl, sourceClass: s.sourceClass, independent: s.independent, rawText: s.rawText }));
       priceBands = corpus.price.bands.length ? corpus.price.bands : undefined;
+      observations = corpus.price.observations;
       // Real market-structure signal to ground segment weights (supply-proxy).
       const tierStr = corpus.price.buckets.map((b) => `${b.label} ${Math.round(b.share * 100)}%`).join(", ");
       const subCounts: Record<string, number> = {};
@@ -191,6 +193,7 @@ switch (cmd) {
       evidence,
       sources,
       priceBands,
+      observations,
       marketSignal,
       competitorClusters,
       provenance,

@@ -69,7 +69,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
       pack,
       opts: { includeCompetitors: true, seed },
     });
-    return score(results, concepts);
+    return score(results, concepts, pack.benchmarkBrands ?? []);
   };
 
   const baseSeed = opts.seed ?? 0;
@@ -156,6 +156,20 @@ export function formatReport(out: TournamentOutput): string {
         `[${(c.winRateCiLow * 100).toFixed(0)}-${(c.winRateCiHigh * 100).toFixed(0)}%]  ${c.name}${tag}` +
         (c.avgWtpMinor ? `  (avg WTP ${(c.avgWtpMinor / 100).toFixed(0)})` : ""),
     );
+  }
+  if (report.calibrationPairs && report.calibrationPairs.length) {
+    lines.push(`\nBenchmark anchors (audit-only — real brands, disguised in arena):`);
+    lines.push(`   real win-rate  traction   brand`);
+    for (const p of [...report.calibrationPairs].sort((a, b) => b.tractionScore - a.tractionScore)) {
+      lines.push(
+        `   ${(p.arenaWinRate * 100).toFixed(1).padStart(8)}%   ${p.tractionScore.toFixed(2).padStart(6)}   ${p.realName}`,
+      );
+    }
+  }
+  if (report.correlationCheck) {
+    const c = report.correlationCheck;
+    lines.push(`\nCalibration smoke-check: Spearman rho = ${c.spearmanRho.toFixed(2)} (n=${c.n}, ${c.verdict})`);
+    lines.push(`   ${c.note}`);
   }
   if (report.winner) {
     lines.push(`\nBest candidate: ${report.winner.name} @ ${(report.winner.winRate * 100).toFixed(1)}%`);

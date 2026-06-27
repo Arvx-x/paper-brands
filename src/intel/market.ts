@@ -25,6 +25,8 @@ export interface CategoryBrief {
   sources?: EvidenceSource[];
   /** Data-derived price bands (from real SKU prices); overrides LLM guess. */
   priceBands?: { label: string; lowMinor: number; highMinor: number }[];
+  /** Real scraped SKU observations (incl. reviews/rating) for benchmark anchors. */
+  observations?: import("../scrape/prices.ts").PriceObservation[];
   /**
    * Compact real market-structure signal (price-tier shares + observed product
    * subtypes) used to GROUND buyer-segment weights in the actual assortment
@@ -149,6 +151,23 @@ export async function buildCategoryPack(
     brief.priceBands && brief.priceBands.length
       ? brief.priceBands
       : normalizePriceBands(pack.priceBands);
+
+  // Benchmark anchors (audit-only). Only when real SKU observations with reviews exist.
+  if (brief.observations && brief.observations.length) {
+    const { benchmarksFromObservations } = await import("../benchmark/harvest.ts");
+    const { benchmarkBrands, degraded } = benchmarksFromObservations(
+      brief.observations, pack.priceBands, Number(process.env.PB_BENCHMARK_N ?? "5"),
+    );
+    pack.benchmarkBrands = benchmarkBrands;
+    pack.benchmarksDegraded = degraded;
+  } else {
+    pack.benchmarksDegraded = true;
+  }
+  pack.benchmarkKnownUnknowns = [
+    "Traction is a cumulative-popularity proxy (review volume + rating), NOT current market share or conversion; old brands are over-weighted (survivorship).",
+    "Review data is channel/geo/language-skewed to whatever retailers the harvest reached.",
+    "Traction weighting (volume/quality) and rating band are uncalibrated assumptions until calibration (piece #2) fits them.",
+  ];
 
   // ATTRIBUTION — two gates, then DROP failures so the pack carries only real
   // findings:
