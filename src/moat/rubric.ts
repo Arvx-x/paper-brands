@@ -64,22 +64,23 @@ export async function scoreMoat(
             `- proprietaryInsight: how non-obvious/unique the core insight is (1 = unique, 0 = generic).\n` +
             `- distributionWedge: channel or positioning edge vs competitors (1 = strong wedge, 0 = none).\n` +
             `- brandTrustDurability: ability to build defensible affinity/trust (1 = durable, 0 = forgettable).\n\n` +
-            `IMPORTANT: Most generic D2C concepts are EASY to copy — reserve high copyability-resistance for genuinely hard-to-replicate ideas. Do NOT give every concept high scores.\n` +
             `Each axis needs a ONE-SENTENCE rationale grounded in the concept and the competitors below.\n\n` +
             `Competitors (disguised):\n${JSON.stringify(competitors, null, 2)}\n\n` +
             `Concepts:\n` +
             concepts.map((c) => JSON.stringify({ id: c.id, name: c.name, positioning: c.positioning, coreInsight: c.coreInsight, productPromise: c.productPromise, claims: c.claims, priceBand: c.priceBand, targetCustomer: c.targetCustomer })).join("\n") +
-            `\n\nReturn ONLY JSON: { "scores": [ { "conceptId", "axes": [ { "name", "score", "rationale" } ] } ] }`,
+            `\n\nIMPORTANT: Most generic D2C concepts are EASY to copy and have GENERIC insights — reserve high scores on ANY axis for genuinely hard-to-replicate, non-obvious ideas. Do NOT give every concept high scores across the board.\n` +
+            `Return ONLY JSON: { "scores": [ { "conceptId", "axes": [ { "name", "score", "rationale" } ] } ] }`,
         },
       ],
       temperature: 0,
     });
-  } catch {
+  } catch (e) {
+    console.warn("[moat] scoreMoat LLM call failed:", (e as Error)?.message ?? e);
     raw = {};
   }
 
   const byId = new Map<string, any[]>();
-  for (const s of raw?.scores ?? []) {
+  for (const s of Array.isArray(raw?.scores) ? raw.scores : []) {
     if (typeof s?.conceptId === "string") byId.set(s.conceptId, Array.isArray(s.axes) ? s.axes : []);
   }
 

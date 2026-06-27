@@ -65,6 +65,13 @@ test("LLM throws -> all concepts neutral, no throw", async () => {
   expect(out.every((m) => m.warnings.length > 0)).toBe(true);
 });
 
+test("scores not an array -> all concepts neutral, no throw", async () => {
+  const llm = { completeJson: async () => ({ scores: "malformed" }) } as any;
+  const out = await scoreMoat([concept("A", "Alpha")], pack, llm);
+  expect(out[0]!.axes.every((x) => x.score === 0.5)).toBe(true);
+  expect(out[0]!.warnings.length).toBeGreaterThan(0);
+});
+
 test("out-of-range / non-numeric axis score -> clamped/defaulted", async () => {
   const llm = { completeJson: async () => ({ scores: [{ conceptId: "A", axes: [
     { name: "copyability", score: 5, rationale: "rc" },
