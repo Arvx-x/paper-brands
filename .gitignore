@@ -6,3 +6,4 @@ packs/
 data/
 *.log
 bun.lockb
+.superpowers/
