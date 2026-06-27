@@ -224,11 +224,13 @@ export async function buildCategoryPack(
   pack.purchaseTriggers = pt.filter((i) => i.verified);
   pack.rejectionReasons = rr.filter((i) => i.verified);
 
-  // Ground persona anxieties in REAL verified complaints. rejectionReasons + unmetNeeds
-  // are already containment+entailment-verified EvidencedItems — reuse them directly.
-  // This runs AFTER attribution so we have the verified items available. If attribution
-  // hasn't run yet (no sources), items will have verified:false and be excluded.
-  const grievanceItems = [...(pack.rejectionReasons ?? []), ...(pack.unmetNeeds ?? [])].filter((i) => i.verified);
+  // Ground persona anxieties in REAL verified complaints. Use the pre-independence-filter
+  // `rr`/`un` arrays (containment+entailment verified) rather than pack.rejectionReasons
+  // (which only keeps requireIndependent:true). For grounding we want ANY real shopper
+  // anxiety that passed the quote-verification gates — marketplace reviews ARE real fears,
+  // even if they're not independent sources. The independence flag is preserved on each
+  // item (sourceClass + independent field) so operators can see the mix.
+  const grievanceItems = [...rr, ...un].filter((i) => i.verified);
   if (grievanceItems.length && pack.buyerSegments.length) {
     const segList = pack.buyerSegments.map((s) => s.seed).join("\n- ");
     const assignRaw = await llm.completeJson<{ assignments: { text: string; segment: string }[] }>({
