@@ -23,11 +23,16 @@ export const BrandConceptSchema = z.object({
 export type BrandConcept = z.infer<typeof BrandConceptSchema>;
 
 /**
- * Blind "card" shown to buyer agents in the arena. Strips the real/disguised
- * identity to a neutral OPTION-x label so neither candidate nor competitor
- * benefits from name recognition or pretraining bias.
+ * Blind card shown to buyer agents. Structured like a product page so the deep
+ * arena can render distinct sections; `pitch` is a flat fallback for the
+ * single-shot arena. Identity is reduced to a neutral OPTION-x label.
  */
 export interface BlindCard {
-  label: string; // e.g. "OPTION-A"
-  pitch: string; // neutral description shown to the buyer
+  label: string;        // e.g. "OPTION-A"
+  headline: string;
+  body: string;         // positioning + promise, in brand voice (or neutral for competitors)
+  claims: string[];
+  format: string;
+  priceMinor: number;
+  pitch: string;        // flat fallback for SingleShotArena
 }
