@@ -75,3 +75,50 @@ test("empty pool -> empty selection, count 0, no crash", () => {
   expect(sel.distinctWedgeCount).toBe(0);
   expect(sel.spannedWedges).toEqual([]);
 });
+
+import { tagWedges } from "./diversity.ts";
+
+type Terr = { name: string; thesis: string; primarySegment: string };
+const terrs: Terr[] = [
+  { name: "Clean Skin", thesis: "non-toxic for sensitive skin", primarySegment: "sensitive-skin" },
+  { name: "All Day", thesis: "longevity in heat", primarySegment: "everyday" },
+];
+
+test("tagWedges maps a well-formed batch response to fingerprints", async () => {
+  const llm = { completeJson: async () => ({ tags: [
+    { territoryIndex: 0, wedge: "clean", segment: "sensitive-skin", tier: "premium" },
+    { territoryIndex: 1, wedge: "longevity", segment: "everyday", tier: "value" },
+  ] }) } as any;
+  const out = await tagWedges(terrs, ["value", "premium"], llm);
+  expect(out).toHaveLength(2);
+  expect(out[0]!.fingerprint).toEqual({ wedge: "clean", segment: "sensitive-skin", tier: "premium" });
+  expect(out[1]!.territoryName).toBe("All Day");
+});
+
+test("tagWedges fails clean: LLM throws -> sentinel-distinct fingerprints, no throw", async () => {
+  const llm = { completeJson: async () => { throw new Error("down"); } } as any;
+  const out = await tagWedges(terrs, ["value", "premium"], llm);
+  expect(out).toHaveLength(2);
+  // sentinels are distinct per index, never collapse into duplicates
+  expect(out[0]!.fingerprint.wedge).not.toBe(out[1]!.fingerprint.wedge);
+  expect(out[0]!.fingerprint.wedge).toContain("untagged");
+});
+
+test("tagWedges fills sentinel for any territory missing from the response", async () => {
+  const llm = { completeJson: async () => ({ tags: [
+    { territoryIndex: 0, wedge: "clean", segment: "sensitive-skin", tier: "premium" },
+  ] }) } as any;
+  const out = await tagWedges(terrs, ["value", "premium"], llm);
+  expect(out).toHaveLength(2);
+  expect(out[1]!.fingerprint.wedge).toContain("untagged");
+});
+
+test("tagWedges coerces a tier outside the pack bands to 'unknown'", async () => {
+  const llm = { completeJson: async () => ({ tags: [
+    { territoryIndex: 0, wedge: "clean", segment: "sensitive-skin", tier: "ultra-premium" },
+    { territoryIndex: 1, wedge: "longevity", segment: "everyday", tier: "value" },
+  ] }) } as any;
+  const out = await tagWedges(terrs, ["value", "premium"], llm);
+  expect(out[0]!.fingerprint.tier).toBe("unknown"); // not in ["value","premium"]
+  expect(out[1]!.fingerprint.tier).toBe("value");
+});
