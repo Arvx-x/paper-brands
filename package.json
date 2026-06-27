@@ -18,6 +18,8 @@
     "winrate": "bun run src/cli.ts winrate",
     "calibrate:record": "bun run src/cli.ts calibrate-record",
     "calibrate:status": "bun run src/cli.ts calibrate-status",
+    "smoketest:build": "bun run src/cli.ts smoketest-build",
+    "smoketest:import": "bun run src/cli.ts smoketest-import",
     "test": "bun test"
   },
   "dependencies": {

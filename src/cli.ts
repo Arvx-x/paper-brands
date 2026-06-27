@@ -15,6 +15,9 @@ import { BrandConceptSchema } from "./brand/types.ts";
 import { CalibrationStore } from "./calibration/store.ts";
 import { calibrate, composeEquity } from "./calibration/calibrate.ts";
 import type { CalibrationObservation } from "./calibration/types.ts";
+import { buildExperiment } from "./smoketest/experiment.ts";
+import { writeExperiment, readExperiment } from "./smoketest/write.ts";
+import { parseResultsCsv } from "./smoketest/results.ts";
 
 /** Load identity/product reference images from a comma-separated --refs path list. */
 async function loadRefs(spec?: string) {
@@ -410,6 +413,72 @@ switch (cmd) {
         `rmse=${r.residualRmse === null ? "n/a" : r.residualRmse.toFixed(3)} | status=${r.status} | equity=${eq}` +
         (r.warnings.length ? ` | warnings: ${r.warnings.join(",")}` : ""),
     );
+    break;
+  }
+
+  case "smoketest-build": {
+    const category = arg("category");
+    if (!category) {
+      console.error("usage: smoketest-build --category=<c> [--tournament=out/tournament.json] [--currency=INR] [--out=data]");
+      process.exit(2);
+    }
+    const tournamentPath = arg("tournament", "out/tournament.json")!;
+    let tournament: any;
+    try {
+      tournament = await Bun.file(tournamentPath).json();
+    } catch {
+      console.error(`smoketest-build: cannot read tournament JSON at ${tournamentPath}`);
+      process.exit(2);
+    }
+    let experiment;
+    try {
+      experiment = buildExperiment(tournament, arg("currency", "INR"));
+    } catch (e) {
+      console.error(`smoketest-build: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    const { dir, pages } = await writeExperiment(experiment, tournament.concepts ?? [], arg("out", "data"));
+    console.log(
+      `Built smoke-test experiment for '${experiment.category}' -> ${dir}\n` +
+        `  ${pages} notify-me PDP pages, manifest + results-template.csv\n` +
+        `  Next: run traffic, fill the CSV, then bun run smoketest:import --category=${category} --csv=<path>`,
+    );
+    break;
+  }
+
+  case "smoketest-import": {
+    const category = arg("category");
+    const csvPath = arg("csv");
+    if (!category || !csvPath) {
+      console.error("usage: smoketest-import --category=<c> --csv=<path> [--out=data]");
+      process.exit(2);
+    }
+    const baseDir = arg("out", "data");
+    const experiment = await readExperiment(category, baseDir);
+    if (!experiment) {
+      console.error(`smoketest-import: no experiment.json for '${category}'; run smoketest-build first`);
+      process.exit(2);
+    }
+    let csvText: string;
+    try {
+      csvText = await Bun.file(csvPath).text();
+    } catch {
+      console.error(`smoketest-import: cannot read CSV at ${csvPath}`);
+      process.exit(2);
+    }
+    let parsed;
+    try {
+      parsed = parseResultsCsv(experiment, csvText, new Date().toISOString());
+    } catch (e) {
+      console.error(`smoketest-import: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    // CalibrationStore always writes to default "data" root (not --out) so calibrate:status can read it.
+    const store = new CalibrationStore(category);
+    for (const obs of parsed.observations) await store.record(obs);
+    console.log(`recorded ${parsed.observations.length} / skipped ${parsed.skipped.length}`);
+    for (const s of parsed.skipped) console.log(`  skip ${s.conceptId}: ${s.reason}`);
+    console.log(`Next: bun run calibrate:status --category=${category}`);
     break;
   }
 
