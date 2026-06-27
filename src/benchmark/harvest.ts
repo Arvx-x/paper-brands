@@ -46,10 +46,13 @@ export function benchmarksFromObservations(
     rating: s.rating,
     retailer: s.retailer,
     tractionScore: tractionScore(s, maxRc),
+    // Provenance is an honest metric RESTATEMENT, not a verbatim sourced quote:
+    // verified:false because no source URL is bound here (PriceObservation carries none).
+    // The real calibration anchor is the traction metric, not a quote (see score.ts gate).
     evidence: [{
       text: `${s.brand} ${s.product}`,
       quote: `${s.reviewCount} reviews, ${s.rating} star at ${s.retailer || "retailer"}`,
-      sourceUrl: "", verified: true, independent: false,
+      sourceUrl: "", verified: false, independent: false,
     }],
   }));
 

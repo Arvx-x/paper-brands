@@ -26,11 +26,22 @@ test("pairs join benchmark winRate with tractionScore; rho computed", () => {
   expect(r.correlationCheck.verdict).toBe("plausible");
 });
 
-test("benchmarks with traction 0 or no evidence are excluded", () => {
-  const concepts = [cs("benchmark:a", 0.5, 4), cs("benchmark:z", 0.5, 4)];
-  const benchmarks = [bm("a", 0.9), { ...bm("z", 0), evidence: [] } as BenchmarkBrand];
-  const r = buildCalibration(concepts, benchmarks);
+test("benchmarks with zero traction or zero reviews are excluded (no real anchor)", () => {
+  const concepts = [cs("benchmark:a", 0.5, 4), cs("benchmark:z", 0.5, 4), cs("benchmark:nr", 0.5, 4)];
+  const zeroTraction = { ...bm("z", 0) } as BenchmarkBrand;            // no traction
+  const zeroReviews = { ...bm("nr", 0.5), reviewCount: 0 } as BenchmarkBrand; // no reviews
+  const r = buildCalibration(concepts, [bm("a", 0.9), zeroTraction, zeroReviews]);
   expect(r.calibrationPairs.map((p) => p.auditId)).toEqual(["a"]);
+});
+
+test("a benchmark with real traction is INCLUDED even when evidence is unverified (metric is the anchor)", () => {
+  // Mirrors harvested benchmarks: verified:false provenance, but real review traction.
+  const harvested = {
+    ...bm("h", 0.7), reviewCount: 50000,
+    evidence: [{ text: "t", quote: "50000 reviews, 4.5 star", sourceUrl: "", verified: false, independent: false }],
+  } as BenchmarkBrand;
+  const r = buildCalibration([cs("benchmark:h", 0.4, 3)], [harvested]);
+  expect(r.calibrationPairs.map((p) => p.auditId)).toEqual(["h"]);
 });
 
 test("fewer than 3 pairs => insufficient-n verdict", () => {

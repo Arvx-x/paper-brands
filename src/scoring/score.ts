@@ -98,8 +98,10 @@ export function buildCalibration(
     const auditId = c.conceptId.slice("benchmark:".length);
     const b = byAudit.get(auditId);
     if (!b) continue;
-    const evidenced = b.evidence.some((e) => e.verified);
-    if (b.tractionScore <= 0 || !evidenced) continue; // no real anchor => exclude
+    // The calibration anchor for Level 1 is the real TRACTION metric (review volume +
+    // rating), not a verbatim-sourced quote. A benchmark with no traction has no real
+    // anchor and is excluded. (Verbatim-source evidence is a Level-2/grounding concern.)
+    if (b.tractionScore <= 0 || (b.reviewCount ?? 0) <= 0) continue;
     pairs.push({
       auditId, realName: b.realName, arenaWinRate: c.winRate,
       tractionScore: b.tractionScore, picks: c.picks, trials: c.trials,
