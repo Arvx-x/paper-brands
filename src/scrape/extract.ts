@@ -79,3 +79,67 @@ export function redditCommentText(listings: unknown, maxChars: number): string {
   walkReddit(listings as RedditNode[], out);
   return out.join(" — ").replace(/\s+/g, " ").trim().slice(0, maxChars);
 }
+
+/** Extract a YouTube video id from common URL forms. Returns "" if not YouTube. */
+export function youtubeVideoId(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") return u.pathname.slice(1).split("/")[0] ?? "";
+    if (!/(^|\.)youtube\.com$/.test(host)) return "";
+    const v = u.searchParams.get("v");
+    if (v) return v;
+    const m = u.pathname.match(/\/(?:shorts|embed)\/([^/?#]+)/);
+    return m ? m[1]! : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Decode YouTube timedtext transcript XML (the free, no-key caption endpoint). */
+export function parseTimedTextXml(xml: string): string {
+  const parts: string[] = [];
+  const re = /<text[^>]*>([\s\S]*?)<\/text>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    const decoded = (m[1] ?? "")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#(\d+);/g, (_, d) => { try { return String.fromCodePoint(Number(d)); } catch { return " "; } })
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (decoded) parts.push(decoded);
+  }
+  return parts.join(" ").trim();
+}
+
+/** Recursively collect review-ish text fields (text/reviewBody/comment) from any node. */
+function collectReviewText(node: unknown, out: string[]): void {
+  if (!node) return;
+  if (Array.isArray(node)) { for (const n of node) collectReviewText(n, out); return; }
+  if (typeof node === "object") {
+    const o = node as Record<string, unknown>;
+    for (const key of ["reviewBody", "text", "comment", "content"]) {
+      const v = o[key];
+      if (typeof v === "string" && v.trim().length > 12) out.push(v.trim());
+    }
+    for (const v of Object.values(o)) collectReviewText(v, out);
+  }
+}
+
+/** Extract review text from a Next.js __NEXT_DATA__ JSON blob (Trustpilot etc.). */
+export function extractNextDataReviews(html: string): string {
+  const m = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!m || !m[1]) return "";
+  try {
+    const out: string[] = [];
+    collectReviewText(JSON.parse(m[1]), out);
+    return [...new Set(out)].join(" — ").trim();
+  } catch {
+    return "";
+  }
+}

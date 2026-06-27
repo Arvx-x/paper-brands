@@ -10,7 +10,7 @@
  * are recorded as coverage gaps, never thrown.
  */
 
-import { extractJsonLdReviews, redditCommentText } from "./extract.ts";
+import { extractJsonLdReviews, redditCommentText, youtubeVideoId, parseTimedTextXml, extractNextDataReviews } from "./extract.ts";
 
 export interface FetchedPage {
   requestedUrl: string;
@@ -107,6 +107,39 @@ async function fetchRedditJson(
   }
 }
 
+/**
+ * YouTube blocks scraping the watch page, but the free, no-key `timedtext` caption
+ * endpoint returns the transcript XML. Review videos ("I tried X for 30 days") are a
+ * rich free source of first-hand product experience.
+ */
+async function fetchYouTubeTranscript(
+  requestedUrl: string,
+  videoId: string,
+  signal: AbortSignal,
+  maxChars: number,
+): Promise<FetchedPage | null> {
+  // Try a few common caption tracks (manual EN, ASR EN, generic).
+  const urls = [
+    `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`,
+    `https://www.youtube.com/api/timedtext?lang=en&kind=asr&v=${videoId}`,
+    `https://video.google.com/timedtext?lang=en&v=${videoId}`,
+  ];
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, { redirect: "follow", signal, headers: { "User-Agent": UA } });
+      if (!res.ok) continue;
+      const xml = await res.text();
+      const text = parseTimedTextXml(xml).slice(0, Math.max(maxChars, 12000));
+      if (text.length > 0) {
+        return { requestedUrl, finalUrl: requestedUrl, domain: "youtube.com", status: res.status, text, ok: true };
+      }
+    } catch {
+      /* try next track */
+    }
+  }
+  return null;
+}
+
 export async function fetchPage(
   url: string,
   opts: { timeoutMs?: number; maxChars?: number } = {},
@@ -121,6 +154,13 @@ export async function fetchPage(
     if (/(^|\.)reddit\.com$/.test(domainOf(target))) {
       const r = await fetchRedditJson(requestedUrl, target, ctrl.signal, maxChars);
       if (r && r.ok) return r;
+    }
+    const ytId = youtubeVideoId(target);
+    if (ytId) {
+      const r = await fetchYouTubeTranscript(requestedUrl, ytId, ctrl.signal, maxChars);
+      // YouTube watch pages are nav chrome, not review text — only the transcript is useful.
+      // If the no-key timedtext endpoint returns nothing, fail rather than scrape the page.
+      return r ?? { requestedUrl, finalUrl: requestedUrl, domain: "youtube.com", status: 0, text: "", ok: false };
     }
     const res = await fetch(target, {
       redirect: "follow",
@@ -145,9 +185,11 @@ export async function fetchPage(
     // Pull embedded JSON-LD Review text first (survives even when visible reviews are
     // JS-rendered), then the readable prose. htmlToText drops <script>, so extract before.
     const ldReviews = extractJsonLdReviews(html);
+    const nextReviews = extractNextDataReviews(html);
+    const structured = [ldReviews, nextReviews].filter(Boolean).join(" — ");
     const prose = htmlToText(html);
-    const combined = (ldReviews ? ldReviews + " — " : "") + prose;
-    const text = combined.slice(0, ldReviews ? Math.max(maxChars, 12000) : maxChars);
+    const combined = (structured ? structured + " — " : "") + prose;
+    const text = combined.slice(0, structured ? Math.max(maxChars, 12000) : maxChars);
     return { requestedUrl, finalUrl, domain, status: res.status, text, ok: text.length > 0 };
   } catch {
     return { requestedUrl, finalUrl: url, domain: domainOf(url), status: 0, text: "", ok: false };
