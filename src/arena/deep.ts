@@ -81,12 +81,13 @@ export class DeepNegotiationArena implements BuyerArena {
       const perOptionWtpMinor: Record<string, number> = {};
       let best: { entry: typeof entries[number]; conviction: number; wtp: number; turns: number; objection: string } | null = null;
       let anyErrored = false;
+      let erroredCount = 0;
 
       for (const e of slate) {
-        const o = await this.negotiateFn(traits, e.card, pack.currency, seed);
+        const o = await this.negotiateFn(traits, e.card, pack.currency, `${seed}::${persona.id}`);
         perOptionWtpMinor[e.conceptId] = o.finalWtp;
-        if (o.errored) { anyErrored = true; continue; }
-        const affordable = e.card.priceMinor <= o.finalWtp;
+        if (o.errored) { anyErrored = true; erroredCount++; continue; }
+        const affordable = o.affordable;
         if (!affordable) continue;
         if (!best ||
             o.conviction > best.conviction ||
@@ -96,10 +97,12 @@ export class DeepNegotiationArena implements BuyerArena {
       }
 
       if (!best) {
+        const allErrored = erroredCount === slate.length;
         results.push({
           personaId: persona.id, segment: persona.segment, pickedConceptId: "",
           pickedLabel: "", willingnessToPayMinor: 0, reason: "", topObjection: "",
-          abstained: !anyErrored, errored: anyErrored && Object.keys(perOptionWtpMinor).length === 0,
+          abstained: !allErrored,   // queried but nothing affordable
+          errored: allErrored,      // every option failed
           perOptionWtpMinor,
         });
         return;

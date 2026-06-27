@@ -41,3 +41,57 @@ test("arena advertises kind and cost", () => {
   expect(arena.kind).toBe("deep-negotiation");
   expect(arena.costClass).toBe("expensive");
 });
+
+test("competitor wins when it is the most convincing affordable option", async () => {
+  // Only the competitor (conceptId starts 'competitor:') is convinced+affordable.
+  // negotiate is per-card; competitor card price = midPrice(mid band)=75000, candidate=60000.
+  // Make the HIGHER-priced card (competitor) win by conviction, both affordable.
+  const everyoneAffordableCompetitorBest = async (_t: any, card: any) =>
+    card.priceMinor >= 70000
+      ? { conviction: 0.9, finalWtp: 200000, affordable: true, bought: true, turns: 2, errored: false, lastObjection: "o" }
+      : { conviction: 0.3, finalWtp: 200000, affordable: true, bought: false, turns: 3, errored: false, lastObjection: "o" };
+  const arena = new DeepNegotiationArena(pack, 4, everyoneAffordableCompetitorBest as any);
+  const res = await arena.run({ candidates, cohort, pack, opts: { seed: 1 } });
+  expect(res[0]!.pickedConceptId.startsWith("competitor:")).toBe(true);
+});
+
+test("errored:true (not abstained) when every option fails", async () => {
+  const allError = async () => ({ conviction: 0, finalWtp: 0, affordable: false, bought: false, turns: 1, errored: true, lastObjection: "" });
+  const arena = new DeepNegotiationArena(pack, 4, allError as any);
+  const res = await arena.run({ candidates, cohort, pack, opts: { seed: 1 } });
+  expect(res[0]!.errored).toBe(true);
+  expect(res[0]!.abstained).toBe(false);
+  expect(res[0]!.pickedConceptId).toBe("");
+});
+
+test("includeCompetitors:false excludes competitor options from the slate", async () => {
+  // Record which cards negotiate saw.
+  const seen: string[] = [];
+  const recorder = async (_t: any, card: any) => {
+    seen.push(card.label);
+    return { conviction: 0.1, finalWtp: 0, affordable: false, bought: false, turns: 4, errored: false, lastObjection: "o" };
+  };
+  const arena = new DeepNegotiationArena(pack, 4, recorder as any);
+  await arena.run({ candidates, cohort, pack, opts: { seed: 1, includeCompetitors: false } });
+  // Only candidates => only OPTION-A (1 candidate fixture). No competitor label.
+  expect(seen.length).toBe(candidates.length);
+});
+
+test("same seed => identical results (determinism)", async () => {
+  const byPrice = async (_t: any, card: any) => card.priceMinor <= 70000
+    ? { conviction: 0.8, finalWtp: 90000, affordable: true, bought: true, turns: 2, errored: false, lastObjection: "o" }
+    : { conviction: 0.1, finalWtp: 40000, affordable: false, bought: false, turns: 4, errored: false, lastObjection: "o" };
+  const arena = new DeepNegotiationArena(pack, 4, byPrice as any);
+  const a = await arena.run({ candidates, cohort, pack, opts: { seed: 7 } });
+  const b = await arena.run({ candidates, cohort, pack, opts: { seed: 7 } });
+  expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+});
+
+test("winning pick carries rich signals (confidence, perOptionWtpMinor, turnsToDecision)", async () => {
+  const win = async (_t: any, card: any) => ({ conviction: 0.7, finalWtp: 90000, affordable: true, bought: true, turns: 2, errored: false, lastObjection: "safety" });
+  const arena = new DeepNegotiationArena(pack, 4, win as any);
+  const res = await arena.run({ candidates, cohort, pack, opts: { seed: 1 } });
+  expect(res[0]!.confidence).toBeGreaterThan(0);
+  expect(res[0]!.turnsToDecision).toBe(2);
+  expect(Object.keys(res[0]!.perOptionWtpMinor ?? {}).length).toBeGreaterThanOrEqual(1);
+});
