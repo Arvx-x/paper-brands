@@ -30,6 +30,8 @@ export interface TournamentOutput {
   concepts: BrandConcept[];
   report: ArenaReport;
   runStats?: RunStats;
+  groundingCoverage?: number;
+  cohortDiversity?: number;
 }
 
 /**
@@ -55,7 +57,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   console.error(`      -> ${concepts.map((c) => c.name).join(", ")}`);
 
   console.error(`[2/4] Building representative cohort of ${opts.cohortSize}...`);
-  const { personas: cohort } = await buildCohort(pack, opts.cohortSize);
+  const { personas: cohort, groundingCoverage, cohortDiversity } = await buildCohort(pack, opts.cohortSize);
   console.error(`      -> ${cohort.length} buyer agents`);
 
   const arena = opts.deep ? new DeepNegotiationArena(pack) : new SingleShotArena(pack);
@@ -97,7 +99,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
 
   console.error(`[4/4] Scoring...`);
 
-  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats };
+  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity };
 
   if (opts.outDir) {
     await mkdir(opts.outDir, { recursive: true });
@@ -148,6 +150,12 @@ export function formatReport(out: TournamentOutput): string {
     `Abstention: ${(report.abstentionRate * 100).toFixed(1)}%  |  Errors: ${(report.errorRate * 100).toFixed(1)}%` +
       (report.degraded ? "  [DEGRADED]" : ""),
   );
+  if (out.groundingCoverage !== undefined) {
+    lines.push(
+      `Persona grounding: ${(out.groundingCoverage * 100).toFixed(0)}% on real grievances` +
+        ` | diversity ${(out.cohortDiversity ?? 0).toFixed(2)}`,
+    );
+  }
   lines.push(`\nLeaderboard (win-rate):`);
   for (const c of report.concepts) {
     const tag = c.conceptId.startsWith("competitor:") ? "  [competitor]" : "";

@@ -7,6 +7,7 @@ import {
   type Provenance,
   type EvidencedItem,
 } from "../categories/types.ts";
+import { tagGrievancesToSegments } from "../personas/grievances.ts";
 
 export interface CategoryBrief {
   category: string;
@@ -222,6 +223,36 @@ export async function buildCategoryPack(
   pack.wellMetNeeds = wm.filter((i) => i.verified);
   pack.purchaseTriggers = pt.filter((i) => i.verified);
   pack.rejectionReasons = rr.filter((i) => i.verified);
+
+  // Ground persona anxieties in REAL verified complaints. rejectionReasons + unmetNeeds
+  // are already containment+entailment-verified EvidencedItems — reuse them directly.
+  // This runs AFTER attribution so we have the verified items available. If attribution
+  // hasn't run yet (no sources), items will have verified:false and be excluded.
+  const grievanceItems = [...(pack.rejectionReasons ?? []), ...(pack.unmetNeeds ?? [])].filter((i) => i.verified);
+  if (grievanceItems.length && pack.buyerSegments.length) {
+    const segList = pack.buyerSegments.map((s) => s.seed).join("\n- ");
+    const assignRaw = await llm.completeJson<{ assignments: { text: string; segment: string }[] }>({
+      messages: [{ role: "user", content:
+        `Assign each shopper complaint to the single best-fit buyer segment.\n` +
+        `Segments:\n- ${segList}\n\nComplaints (one per line):\n` +
+        grievanceItems.map((g, i) => `${i}. ${g.text}`).join("\n") +
+        `\n\nReturn JSON { "assignments": [ { "text": <exact complaint text>, "segment": <exact segment seed> } ] }.`,
+      }],
+    }).catch(() => ({ assignments: [] as { text: string; segment: string }[] }));
+    const segMap = new Map(assignRaw.assignments.map((a) => [a.text, a.segment]));
+    pack.groundedGrievances = tagGrievancesToSegments(
+      grievanceItems,
+      pack.buyerSegments,
+      (text) => segMap.get(text) ?? pack.buyerSegments[0]!.seed,
+    );
+  }
+  pack.personaGroundingKnownUnknowns = [
+    "Grievances are STATED complaints from vocal/dissatisfied reviewers (survivorship), not a representative buyer sample.",
+    "Segment weights blend supply proxy (what's stocked) and review-activity proxy (what's discussed) — neither is measured demand.",
+    "Review corpus is channel/geo/language-skewed to whatever the harvest reached.",
+    "Grounding improves INPUT realism only; it does NOT make win-rates calibrated or representative of true market share.",
+  ];
+
   await Promise.all(
     pack.competitorArchetypes.map(async (a) => {
       a.evidence = (await bind(a.evidence, "competitor claim", false)).filter((i) => i.verified);
