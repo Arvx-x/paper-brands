@@ -70,6 +70,7 @@ switch (cmd) {
       outDir: arg("out", "out"),
       mode: parseArenaMode(),
       deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
+      moat: flag("moat"),
       seed: Number(arg("seed", "0")),
       runs: Number(arg("runs", "1")),
     });
