@@ -91,6 +91,25 @@ export const ProvenanceSchema = z.object({
 });
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 
+/**
+ * A real, known brand used as a blind calibration ANCHOR. realName + the traction
+ * metrics are AUDIT-ONLY — never shown to the buyer agent; only claims/price/format
+ * are rendered (disguised) into the arena card.
+ */
+export const BenchmarkBrandSchema = z.object({
+  auditId: z.string(),
+  realName: z.string(),
+  claims: z.array(z.string()),
+  priceMinor: z.number(),
+  format: z.string(),
+  reviewCount: z.number().default(0),
+  rating: z.number().default(0),
+  retailer: z.string().default(""),
+  tractionScore: z.number().default(0),
+  evidence: z.array(EvidencedItemSchema).default([]),
+});
+export type BenchmarkBrand = z.infer<typeof BenchmarkBrandSchema>;
+
 export const CategoryPackSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -108,6 +127,12 @@ export const CategoryPackSchema = z.object({
   priceBands: z.array(PriceBandSchema),
   /** Disguised real-world competitors used as blind benchmarks. */
   competitorArchetypes: z.array(CompetitorArchetypeSchema),
+  /** Real brands as audit-only blind calibration anchors. */
+  benchmarkBrands: z.array(BenchmarkBrandSchema).default([]),
+  /** True when benchmark harvest found no usable review data. */
+  benchmarksDegraded: z.boolean().default(false),
+  /** Declared known-unknowns for the benchmark anchors. */
+  benchmarkKnownUnknowns: z.array(z.string()).default([]),
   /** Hard constraints the brand strategist must respect. */
   complianceNotes: z.array(z.string()),
   /**
