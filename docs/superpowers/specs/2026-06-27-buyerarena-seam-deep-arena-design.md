@@ -3,7 +3,7 @@
 **Date:** 2026-06-27
 **Status:** Approved (design phase)
 **Repo target:** `paper-brands` (the foundry). Prototyped in `paper-brands-research`.
-**Piece:** #1 of a 4-part decomposition (see "Context").
+**Piece:** #1 of a 5-part decomposition (see "Context").
 
 ---
 
@@ -21,15 +21,24 @@ The owner's strategic decisions that frame this spec:
 - **Calibration is the moat.** Arena depth is a means to that end, not the end.
 - The end-to-end foundry is the product; the arena is one (currently weakest) component.
 
-Four-part decomposition (each its own spec → plan → build cycle):
+Five-part decomposition (each its own spec → plan → build cycle):
 1. **`BuyerArena` interface + adapt the deep negotiation arena to the blind
-   N-option format.** ← THIS SPEC.
+   N-option format, incl. the structured (PDP-style) card the buyer reacts to.**
+   ← THIS SPEC.
 2. Calibration layer (source-agnostic): `(syntheticScore, realOutcome)` → fitted
    correction + residual + CI + QUALITY gate. *(The moat — deferred to its own cycle.)*
 3. Ground-truth adapters (smoke-test / analog / first-party data) feeding #2.
 4. Cost-aware arena routing (cheap single-shot for breadth, deep for finalists).
+5. **Defensibility scoring + optimizer objective.** Turns piece #1's per-persona
+   signals (segment, reason, conviction, per-option WTP, abstention) into a
+   *defensibility* metric — rewarding distinct, high-conviction, segment-owning,
+   copy-resistant wins over raw conversion — plus a competitor-response stress test.
+   Because a price-driven win is inherently copyable, this metric naturally penalizes
+   the price lever without hard-banning it. *(Deferred to its own cycle.)*
 
-**Scope of this spec:** piece #1 only. Calibration (#2–#4) is explicitly deferred.
+**Scope of this spec:** piece #1 only (now including the structured card). Pieces
+#2–#5 are explicitly deferred. Piece #1's job re: #5 is only to *emit sufficient
+per-persona signal*; it does NOT define the defensibility objective itself.
 
 ---
 
@@ -145,7 +154,10 @@ for each persona (concurrency-capped pool):
 Maps the foundry `Persona` (segment, `budgetSensitivity` low|med|high, `anxieties[]`,
 `decisionStyle`) to the engine's 0–1 traits:
 - `budgetSensitivity` → `priceConsciousness` + seeds `basePMax` from the pack's price
-  bands.
+  bands. **`basePMax` anchors to the CATEGORY price level (e.g. the median price band),
+  NOT to any single option's price** — otherwise the affordability gate would be
+  circular (budget defined by the very price it's judging). The persona carries one
+  base budget into the whole slate; the engine's elasticity then moves it per option.
 - `anxieties[]` → `reluctancePrior`.
 - `decisionStyle` → `skepticism` / `impulsivity` priors.
 Assignment is **deterministic mapping + small seeded jitter** so personas within a
@@ -173,11 +185,90 @@ DTC landing pages do not haggle. So:
 scalar (not a binary buy) ranks options for the pick — making "which would I actually
 buy" a graded comparison rather than N independent coin-flips.
 
-### Known property (write into limitations)
-Without a salesman, an objection can only be resolved by what is **already on the
-card**. A persona whose anxiety the brand never addresses will never gain conviction.
-This is a feature (rewards brands that pre-empt real objections) but means the deep
-arena's discriminating power depends on how rich `BlindCard.pitch` is.
+### Objection resolution — the core per-turn mechanic (no rebuttal-generator)
+
+Since there is no Sales Agent to *produce* a rebuttal, the buyer LLM **self-assesses
+against the card**. Each turn:
+
+1. The buyer LLM is shown the **full structured card** + its persona/traits + its own
+   prior monologue, and is asked to surface its single most pressing remaining
+   objection this turn and judge **how well the card ALREADY addresses it** — emitting
+   the existing grade rubric: `traumaResolutionScore`, `valueScore`, `pressureScore`,
+   `impulseTriggers` (per the research engine's `evaluatePitch`).
+2. The **engine** (not the LLM) converts those grades into the WTP update + conviction
+   (unchanged math). The LLM grades; the engine decides.
+3. Loop until conviction gate fires (buy), conviction collapses (reject), or turn 4.
+
+This is a real shopper scrutinizing a fixed product page across a few beats of
+deliberation — re-reading it, raising the next doubt, seeing whether the page answers
+it. It is exactly the research-repo `evaluatePitch` rubric with the *salesman pitch*
+argument replaced by the *structured card*. No second agent, one LLM call per turn,
+and the anti-sycophancy property is preserved because the LLM never gets to *decide* —
+it only grades, and a card that doesn't address the objection simply yields a low
+`traumaResolutionScore`, so conviction never rises.
+
+### Card is the fixed stimulus — it does NOT expand during a negotiation
+A crucial consequence of "no sales agent": within one negotiation the card is
+**constant**. There is no counterparty to add new arguments mid-conversation (a
+landing page does not talk back). What changes across the ~4 turns is the **persona's
+deliberation** — re-reading the same fixed card, surfacing successive objections,
+accumulating/eroding conviction. (Two separate loops exist: the *negotiation* scores
+one fixed card deeply; the *optimizer*, across runs, evolves a better card. Only the
+optimizer "expands" the card, between runs — never the negotiation, within a run.)
+
+Because an objection can only be resolved by what is **already on the card**, a
+persona whose anxiety the brand never addresses will never gain conviction. This is a
+feature (rewards brands that pre-empt real objections) — but it means a thin card
+starves the negotiation. Therefore the **structured card below is in scope for piece
+#1**: the deep arena is not meaningfully testable against a one-sentence pitch.
+
+---
+
+## The structured (PDP-style) card
+
+Replaces today's single `pitch` string with a structured card that emulates a real
+D2C product page — the surface a real shopper actually decides on — built from fields
+the Council **already generates** (today the arena discards them).
+
+```typescript
+export interface BlindCard {
+  label: string;                 // "OPTION-A"
+  // Structured sections (each kept short; see length-normalization):
+  headline: string;              // from landingHeadline / tagline
+  body: string;                  // positioning + productPromise, rendered in brandVoice
+  claims: string[];              // proof points
+  format: string;                // from heroSku (serum vs cream, size)
+  priceMinor: number;            // fixed listed price
+  // Legacy flat view, derived from the above, for the single-shot arena:
+  pitch: string;
+}
+```
+
+What the buyer sees gains: a **hook**, the brand's **voice/tone**, **proof** (claims),
+**format**, and **price** as distinct, reactable layers — so two options no longer read
+in an identical flat register. Fields used: `landingHeadline`, `tagline`, `brandVoice`,
+`positioning`, `productPromise`, `claims[]`, `heroSku`, `priceMinor` (all already on
+`BrandConcept`).
+
+**Guardrails (preserve the blind control + avoid length bias):**
+- *Competitor voice neutralization* — candidate cards render in their `brandVoice`;
+  disguised **competitor archetypes are paraphrased into a neutral register** so a
+  recognizable signature voice cannot de-anonymize a real brand. (Candidates have no
+  pretraining footprint to leak; competitors do.)
+- *Length normalization* — cap/balance each section's length across all cards so the
+  buyer cannot pick on verbosity/shininess alone (a known LLM bias). The blind label +
+  comparable length keep the signal about *fit*, not *format*.
+- *Legacy `pitch`* is derived from the structured fields so `SingleShotArena` keeps
+  working unchanged.
+
+**Rendering per arena (important):** the **deep arena renders the structured sections**
+(headline → body-in-voice → claims → format → price) into the buyer prompt so the
+PDP structure is actually used; the flat `pitch` is the **single-shot arena's**
+fallback only. If the deep arena read `pitch`, the whole structured card would be
+wasted — so this is explicit.
+
+**Explicitly NOT in piece #1:** multimodal cards (rendered packaging images via the
+Creative Factory). That is a larger, vision-model scope and is deferred.
 
 ---
 
