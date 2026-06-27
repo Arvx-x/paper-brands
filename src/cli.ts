@@ -12,6 +12,9 @@ import { optimizeStructure } from "./creative/metaOptimize.ts";
 import { loadStructure } from "./creative/structure.ts";
 import { readImage } from "./llm/imageClient.ts";
 import { BrandConceptSchema } from "./brand/types.ts";
+import { CalibrationStore } from "./calibration/store.ts";
+import { calibrate, composeEquity } from "./calibration/calibrate.ts";
+import type { CalibrationObservation } from "./calibration/types.ts";
 
 /** Load identity/product reference images from a comma-separated --refs path list. */
 async function loadRefs(spec?: string) {
@@ -355,6 +358,57 @@ switch (cmd) {
           .map((h) => `  round ${h.round}: ${h.championScore.toFixed(1)} vs ${h.challengerScore.toFixed(1)} ${h.accepted ? "ACCEPT" : "keep"} — ${h.changelog}`)
           .join("\n") +
         `\nActive structure saved -> structures/active.json (use: bun run creative --use-structure ...)`,
+    );
+    break;
+  }
+
+  case "calibrate-record": {
+    const category = arg("category");
+    const synthetic = Number(arg("synthetic", "NaN"));
+    const real = Number(arg("real", "NaN"));
+    if (!category || !Number.isFinite(synthetic) || !Number.isFinite(real)) {
+      console.error("usage: calibrate-record --category=<c> --synthetic=0..1 --real=0..1 [--source=] [--unit=] [--metric=] [--label=] [--equity=] [--equity-search=] [--equity-distribution=] [--equity-social=] [--notes=]");
+      process.exit(2);
+    }
+    const equityComponents = {
+      search: arg("equity-search") !== undefined ? Number(arg("equity-search")) : undefined,
+      distribution: arg("equity-distribution") !== undefined ? Number(arg("equity-distribution")) : undefined,
+      social: arg("equity-social") !== undefined ? Number(arg("equity-social")) : undefined,
+    };
+    const equityScore = arg("equity") !== undefined ? Number(arg("equity")) : composeEquity(equityComponents);
+    const obs: CalibrationObservation = {
+      id: arg("id", `${slugify(arg("label", "obs")!)}-${Date.now()}`)!,
+      category,
+      syntheticScore: synthetic,
+      realOutcome: real,
+      equityScore,
+      equityComponents: Object.values(equityComponents).some((v) => v !== undefined) ? equityComponents : undefined,
+      source: (arg("source", "manual") as CalibrationObservation["source"]),
+      unit: (arg("unit", "concept") as CalibrationObservation["unit"]),
+      label: arg("label", "obs")!,
+      realMetric: arg("metric", "landing CTR")!,
+      recordedAt: new Date().toISOString(),
+      notes: arg("notes"),
+    };
+    try {
+      await new CalibrationStore(category).record(obs);
+      console.log(`recorded ${obs.id} (${category}): synthetic=${synthetic} real=${real}${equityScore !== undefined ? ` equity=${equityScore.toFixed(3)}` : ""}`);
+    } catch (e) {
+      console.error(`record rejected: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    break;
+  }
+
+  case "calibrate-status": {
+    const category = arg("category");
+    if (!category) { console.error("usage: calibrate-status --category=<c>"); process.exit(2); }
+    const r = await calibrate(category, Number(arg("synthetic", "0.5")));
+    const eq = r.equityStatus === "learned" ? "learned" : "not-learned";
+    console.log(
+      `n=${r.n} | method=${r.method} | R\u00b2=${(r.r2 ?? 0).toFixed(2)} | ` +
+        `rmse=${r.residualRmse === null ? "n/a" : r.residualRmse.toFixed(3)} | status=${r.status} | equity=${eq}` +
+        (r.warnings.length ? ` | warnings: ${r.warnings.join(",")}` : ""),
     );
     break;
   }

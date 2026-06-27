@@ -16,6 +16,8 @@
     "brandkit": "bun run src/cli.ts brandkit",
     "typecheck": "tsc --noEmit",
     "winrate": "bun run src/cli.ts winrate",
+    "calibrate:record": "bun run src/cli.ts calibrate-record",
+    "calibrate:status": "bun run src/cli.ts calibrate-status",
     "test": "bun test"
   },
   "dependencies": {
