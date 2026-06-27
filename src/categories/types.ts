@@ -110,6 +110,21 @@ export const BenchmarkBrandSchema = z.object({
 });
 export type BenchmarkBrand = z.infer<typeof BenchmarkBrandSchema>;
 
+/**
+ * A real, source-bound shopper grievance tagged to a buyer segment. Used to ground
+ * persona anxieties in real review voice. verbatimQuote carries the actual review text
+ * (mode D verbatim-anchoring anchors on this).
+ */
+export const GroundedGrievanceSchema = z.object({
+  segment: z.string(),
+  anxiety: z.string(),
+  verbatimQuote: z.string(),
+  sourceUrl: z.string().default(""),
+  sourceClass: z.string().default(""),
+  verified: z.boolean().default(false),
+});
+export type GroundedGrievance = z.infer<typeof GroundedGrievanceSchema>;
+
 export const CategoryPackSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -133,6 +148,10 @@ export const CategoryPackSchema = z.object({
   benchmarksDegraded: z.boolean().default(false),
   /** Declared known-unknowns for the benchmark anchors. */
   benchmarkKnownUnknowns: z.array(z.string()).default([]),
+  /** Real source-bound shopper grievances, segment-tagged, for persona grounding. */
+  groundedGrievances: z.array(GroundedGrievanceSchema).default([]),
+  /** Declared known-unknowns for persona grounding. */
+  personaGroundingKnownUnknowns: z.array(z.string()).default([]),
   /** Hard constraints the brand strategist must respect. */
   complianceNotes: z.array(z.string()),
   /**
