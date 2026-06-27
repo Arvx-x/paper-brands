@@ -127,31 +127,37 @@ export class Council {
       }
     }
 
-    // 3. honest flag
-    const warning = sel.distinctWedgeCount < count ? ("lowConceptDiversity" as const) : undefined;
-
-    // 4. specify the selected territories (unchanged).
+    // 3. specify the selected territories (unchanged).
     // `territoryIndex` is positionally aligned to `pool`: the first pool's tags use 0..pool0-1,
     // and re-roll tags were re-based by `+ pool0.length` while `pool` was concatenated in the
     // same order — so `pool[idx]` is the correct territory by construction.
-    const selectedTerritories = sel.selectedIndices
-      .map((idx) => pool[idx])
-      .filter((t): t is NonNullable<(typeof pool)[number]> => Boolean(t));
-    const concepts = (
+    const tagByIndex = new Map(tags.map((t) => [t.territoryIndex, t]));
+    const selected = sel.selectedIndices
+      .map((idx) => ({ territory: pool[idx], tag: tagByIndex.get(idx) }))
+      .filter((x): x is { territory: NonNullable<(typeof pool)[number]>; tag: WedgeTag } => Boolean(x.territory && x.tag));
+    const specified = (
       await Promise.all(
-        selectedTerritories.map((t) =>
-          this.specifyBrand(t).catch((e) => {
-            console.warn(`[council] failed to specify '${t.name}': ${e.message}`);
+        selected.map(async ({ territory, tag }) => {
+          const concept = await this.specifyBrand(territory).catch((e) => {
+            console.warn(`[council] failed to specify '${territory.name}': ${e.message}`);
             return null;
-          }),
-        ),
+          });
+          return concept ? { concept, tag } : null;
+        }),
       )
-    ).filter((c): c is BrandConcept => c !== null);
+    ).filter((x): x is { concept: BrandConcept; tag: WedgeTag } => x !== null);
+
+    const concepts = specified.map((x) => x.concept);
+    const successfulTags = specified.map((x) => x.tag);
+    const fp = (t: WedgeTag) => `${t.fingerprint.wedge}|${t.fingerprint.segment}|${t.fingerprint.tier}`;
+    const distinctWedgeCount = new Set(successfulTags.map(fp)).size;
+    const spannedWedges = [...new Set(successfulTags.map((t) => t.fingerprint.wedge))].sort();
+    const warning = distinctWedgeCount < count || concepts.length < count ? ("lowConceptDiversity" as const) : undefined;
 
     const diversity: DiversityReport = {
       requested: count,
-      distinctWedgeCount: sel.distinctWedgeCount,
-      spannedWedges: sel.spannedWedges,
+      distinctWedgeCount,
+      spannedWedges,
       poolSize: pool.length,
       rerolled,
       warning,

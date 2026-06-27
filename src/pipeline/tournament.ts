@@ -218,15 +218,15 @@ export function formatReport(out: TournamentOutput): string {
   if (div) {
     if (div.warning === "lowConceptDiversity") {
       lines.push(
-        `\u26a0 LOW CONCEPT DIVERSITY \u2014 slate spans only ${div.distinctWedgeCount} wedge` +
-          `${div.distinctWedgeCount === 1 ? "" : "s"} [${div.spannedWedges.join(", ")}]` +
+        `\u26a0 LOW CONCEPT DIVERSITY \u2014 slate spans only ${div.distinctWedgeCount} distinct positioning ` +
+          `fingerprint${div.distinctWedgeCount === 1 ? "" : "s"} [wedges: ${div.spannedWedges.join(", ")}]` +
           `${div.rerolled ? " (re-rolled once)" : ""}. Win-rates compare near-duplicates.`,
       );
     } else {
-      const noun = div.distinctWedgeCount === 1 ? "wedge" : "wedges";
+      const noun = div.distinctWedgeCount === 1 ? "fingerprint" : "fingerprints";
       lines.push(
-        `Concept diversity: ${div.distinctWedgeCount} of ${div.requested} distinct ${noun} ` +
-          `[${div.spannedWedges.join(", ")}]${div.rerolled ? " (re-rolled once)" : ""}`,
+        `Concept diversity: ${div.distinctWedgeCount} of ${div.requested} distinct positioning ${noun} ` +
+          `[wedges: ${div.spannedWedges.join(", ")}]${div.rerolled ? " (re-rolled once)" : ""}`,
       );
     }
   }

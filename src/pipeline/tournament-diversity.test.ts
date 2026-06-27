@@ -15,23 +15,33 @@ function baseOut(div?: DiversityReport): TournamentOutput {
   };
 }
 
-test("healthy diversity -> 'N of M distinct wedges' line, no warning", () => {
+test("healthy diversity -> 'N of M distinct positioning fingerprints' line, no warning", () => {
   const txt = formatReport(baseOut({
     requested: 4, distinctWedgeCount: 3, spannedWedges: ["clean", "gifting", "longevity"],
     poolSize: 16, rerolled: false,
   }));
-  expect(txt).toContain("Concept diversity: 3 of 4 distinct wedges");
-  expect(txt).toContain("clean");
+  expect(txt).toContain("Concept diversity: 3 of 4 distinct positioning fingerprints");
+  expect(txt).toContain("[wedges: clean, gifting, longevity]");
   expect(txt).not.toContain("LOW CONCEPT DIVERSITY");
 });
 
-test("healthy diversity singularizes wedge", () => {
+test("healthy diversity singularizes fingerprint", () => {
   const txt = formatReport(baseOut({
     requested: 1, distinctWedgeCount: 1, spannedWedges: ["clean"],
     poolSize: 4, rerolled: false,
   }));
-  expect(txt).toContain("Concept diversity: 1 of 1 distinct wedge");
-  expect(txt).not.toContain("distinct wedges");
+  expect(txt).toContain("Concept diversity: 1 of 1 distinct positioning fingerprint");
+  expect(txt).not.toContain("distinct positioning fingerprints");
+});
+
+test("same wedge with multiple fingerprints is reported as fingerprints, not wedges", () => {
+  const txt = formatReport(baseOut({
+    requested: 2, distinctWedgeCount: 2, spannedWedges: ["clean"],
+    poolSize: 8, rerolled: false,
+  }));
+  expect(txt).toContain("2 of 2 distinct positioning fingerprints");
+  expect(txt).toContain("[wedges: clean]");
+  expect(txt).not.toContain("2 of 2 distinct wedges");
 });
 
 test("collapsed diversity -> LOW CONCEPT DIVERSITY warning line", () => {
@@ -40,6 +50,7 @@ test("collapsed diversity -> LOW CONCEPT DIVERSITY warning line", () => {
     poolSize: 32, rerolled: true, warning: "lowConceptDiversity",
   }));
   expect(txt).toContain("LOW CONCEPT DIVERSITY");
+  expect(txt).toContain("1 distinct positioning fingerprint");
   expect(txt).toContain("re-rolled");
 });
 

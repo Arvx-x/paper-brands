@@ -99,3 +99,32 @@ test("collapsed first pool + distinct re-roll -> improves diversity and passes a
   expect(avoidCalls[1]).toEqual(["clean"]);
   expect(concepts.map((x) => x.name)).toEqual(expect.arrayContaining(["D", "E"]));
 });
+
+test("diversity report is recomputed from successfully specified concepts only", async () => {
+  const terrs = [
+    { name: "A", thesis: "clean", primarySegment: "sensitive-skin" },
+    { name: "B", thesis: "longevity", primarySegment: "everyday" },
+    { name: "C", thesis: "gifting", primarySegment: "luxury" },
+  ];
+  const tags = [
+    { wedge: "clean", segment: "sensitive-skin", tier: "premium" },
+    { wedge: "longevity", segment: "everyday", tier: "value" },
+    { wedge: "gifting", segment: "luxury", tier: "premium" },
+  ];
+  const c = makeCouncil([terrs], [tags]);
+  (c as any).specifyBrand = async (t: any) => {
+    if (t.name === "B") throw new Error("schema fail");
+    return {
+      id: t.name.toLowerCase(), name: t.name, positioning: t.thesis,
+      targetCustomer: "x", coreInsight: "x", productPromise: "x", heroSku: "x",
+      priceMinor: 100000, priceBand: "premium", tagline: "x", claims: [], packagingDirection: "x",
+      brandVoice: "x", landingHeadline: "x", topAdAngles: [], objections: [], launchRisks: [],
+    };
+  };
+  const { concepts, diversity } = await c.generateCandidates(3, 0);
+  expect(concepts.map((x) => x.name)).not.toContain("B");
+  expect(concepts).toHaveLength(2);
+  expect(diversity.distinctWedgeCount).toBe(2);
+  expect(diversity.spannedWedges).not.toContain("longevity");
+  expect(diversity.warning).toBe("lowConceptDiversity");
+});
