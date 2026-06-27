@@ -177,7 +177,7 @@ async function proposeStructures(
       try {
         const raw = await llm.completeJson<Record<string, unknown>>({
           temperature: 0.8,
-          maxTokens: 4096,
+          maxTokens: 8192,
           messages: [
             {
               role: "system",

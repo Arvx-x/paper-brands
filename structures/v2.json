@@ -1,0 +1,146 @@
+{
+  "version": 2,
+  "parentVersion": 1,
+  "changelog": "Refined `specSystem` to explicitly state the goal of defining a comprehensive art direction brief, and broadened `mood` to `moodAndAtmosphere` for a more holistic emotional and tonal capture.",
+  "specFields": [
+    {
+      "key": "subject",
+      "instruction": "the hero and exactly how it's styled, posed, and placed"
+    },
+    {
+      "key": "camera",
+      "instruction": "shot type, specific lens (e.g. 85mm), angle, depth of field/bokeh"
+    },
+    {
+      "key": "lighting",
+      "instruction": "setup, direction, quality (soft/hard), time of day, any rim/fill"
+    },
+    {
+      "key": "colorGrade",
+      "instruction": "which BrandKit hex dominate, contrast, a film/grade reference"
+    },
+    {
+      "key": "composition",
+      "instruction": "framing, focal hierarchy, negative space, where text sits"
+    },
+    {
+      "key": "texture",
+      "instruction": "materials and surface finish (matte, dewy, ceramic, paper grain)"
+    },
+    {
+      "key": "moodAndAtmosphere",
+      "instruction": "the overarching emotion, tone, and atmospheric vibe it must evoke"
+    },
+    {
+      "key": "typographyTreatment",
+      "instruction": "how the headline/subhead/CTA are set and positioned"
+    }
+  ],
+  "specSystem": "Collaboratively define a comprehensive, award-winning creative vision across all specified fields, producing a detailed art direction brief ready for a state-of-the-art image model. Aim for editorial campaign quality that wins design awards, not stock templates.",
+  "promptTemplate": "Art-direct and render an award-winning {assetType} ({aspect}) for \"{brandName}\" —\neditorial campaign quality, the kind of work that wins design awards. Not a stock template.\n\nBRAND SYSTEM (obey strictly):\n{brandSystem}\n\nCREATIVE DIRECTION:\n{imagePrompt}\n{direction}\n\nIN-IMAGE TEXT — render crisp, kerned, correctly spelled, integrated into the design: {text}\n\n{directives} Avoid: {negatives}.",
+  "directives": [
+    "Photorealistic finish where applicable, flawless craft, intentional negative space, magazine-grade polish."
+  ],
+  "negatives": [],
+  "council": [
+    {
+      "role": "Art Director",
+      "charter": "Own composition, visual hierarchy, lighting, and craft. You argue for imagery that looks expensively made — intentional negative space, a clear focal path, and finish that reads premium at a glance. You reject muddy, generic, stock-looking visuals."
+    },
+    {
+      "role": "Copywriter",
+      "charter": "Own the headline, subhead, and CTA. You argue for one sharp idea a buyer gets in under a second, in the brand's voice, with no filler. You kill cleverness that obscures the message."
+    },
+    {
+      "role": "Brand Guardian",
+      "charter": "Enforce the BrandKit: palette, type mood, logo usage, voice, and the do/don't lists. You argue for consistency across the whole library and veto anything off-palette, off-voice, or off-style, however pretty."
+    },
+    {
+      "role": "Performance Marketer",
+      "charter": "Own scroll-stopping power and conversion for the specific channel and audience. You argue from what makes a thumb stop and a click happen: contrast, the value in-frame, a benefit-led hook, platform-native framing."
+    },
+    {
+      "role": "Competitor Creative Analyst",
+      "charter": "Map how rivals' creatives look and what the category overuses. You argue for distinctiveness — a look that could not be mistaken for a competitor — while avoiding tropes that signal 'cheap' in this category."
+    },
+    {
+      "role": "Prompt Engineer",
+      "charter": "Translate the council's intent into a precise, render-ready image prompt and negative prompt for a state-of-the-art image model. You are concrete about subject, composition, lens, lighting, palette (with hex), materials, mood, and any in-image text. You never write vague adjectives without a visual anchor."
+    }
+  ],
+  "judges": [
+    {
+      "name": "Awwwards-level Art Director",
+      "emphasis": "craft, composition, lighting realism, and whether it looks like an award-winning editorial campaign — ruthless about AI/stock/template tells"
+    },
+    {
+      "name": "Brand Guardian",
+      "emphasis": "fidelity to the BrandKit: exact palette, type mood, voice, logo usage, do/don't lists"
+    },
+    {
+      "name": "Growth Marketer",
+      "emphasis": "scroll-stopping power, message clarity in under a second, conversion intent on the target channel"
+    },
+    {
+      "name": "Typography & Detail Critic",
+      "emphasis": "in-image text spelling/kerning/legibility/hierarchy, and artifacts (warped edges, extra fingers, mushy logos, plastic skin)"
+    },
+    {
+      "name": "Market Realism & Casting Director",
+      "emphasis": "whether casting/styling/setting authentically fit the target market and its real diversity; foreign stand-ins or a single stereotyped skin tone are serious failures"
+    },
+    {
+      "name": "Common-sense Skeptic",
+      "emphasis": "the gut check a smart outsider has: does anything look wrong, implausible, tone-deaf, or try-hard? would a real person in this market relate?"
+    }
+  ],
+  "rubric": [
+    {
+      "key": "visualQuality",
+      "weight": 0.25,
+      "guidance": "craft, polish, composition, lighting, finish; penalize AI/stock tells hard"
+    },
+    {
+      "key": "brandConsistency",
+      "weight": 0.2,
+      "guidance": "exact adherence to the BrandKit (palette hex, type mood, logo/product form, voice)"
+    },
+    {
+      "key": "marketFit",
+      "weight": 0.2,
+      "guidance": "authentic casting/styling/setting for the target market and its real diversity"
+    },
+    {
+      "key": "messageClarity",
+      "weight": 0.15,
+      "guidance": "single idea legible in under a second; text spelled & kerned correctly"
+    },
+    {
+      "key": "conversionPotential",
+      "weight": 0.12,
+      "guidance": "would the target audience actually stop and act"
+    },
+    {
+      "key": "differentiation",
+      "weight": 0.08,
+      "guidance": "unmistakably this brand, not a generic category creative"
+    }
+  ],
+  "gates": [
+    {
+      "axis": "marketFit",
+      "threshold": 5,
+      "cap": 50
+    },
+    {
+      "axis": "brandConsistency",
+      "threshold": 5,
+      "cap": 55
+    },
+    {
+      "axis": "visualQuality",
+      "threshold": 4,
+      "cap": 45
+    }
+  ]
+}

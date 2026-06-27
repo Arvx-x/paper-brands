@@ -4,5 +4,6 @@ node_modules/
 out/
 packs/
 data/
+structures/evals/
 *.log
 bun.lockb
