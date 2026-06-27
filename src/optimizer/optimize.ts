@@ -46,7 +46,12 @@ export async function optimize(opts: OptimizeOptions): Promise<OptimizeResult> {
   const variantsPerRound = opts.variantsPerRound ?? 3;
 
   const winRateOf = async (c: BrandConcept): Promise<number> => {
-    const results = await arena.run([c], opts.cohort, { includeCompetitors: true });
+    const results = await arena.run({
+      candidates: [c],
+      cohort: opts.cohort,
+      pack: opts.pack,
+      opts: { includeCompetitors: true },
+    });
     return score(results, [c]).winner?.winRate ?? 0;
   };
 

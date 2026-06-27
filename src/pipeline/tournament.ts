@@ -34,7 +34,12 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
 
   console.error(`[3/4] Running blind arena (candidates vs disguised competitors)...`);
   const arena = new Arena(pack);
-  const results = await arena.run(concepts, cohort, { includeCompetitors: true });
+  const results = await arena.run({
+    candidates: concepts,
+    cohort,
+    pack,
+    opts: { includeCompetitors: true },
+  });
 
   console.error(`[4/4] Scoring...`);
   const report = score(results, concepts);
