@@ -8,6 +8,7 @@ import {
   type EvidencedItem,
 } from "../categories/types.ts";
 import { tagGrievancesToSegments } from "../personas/grievances.ts";
+import { extractGroundedGrievances } from "../personas/grievanceExtract.ts";
 
 export interface CategoryBrief {
   category: string;
@@ -224,29 +225,34 @@ export async function buildCategoryPack(
   pack.purchaseTriggers = pt.filter((i) => i.verified);
   pack.rejectionReasons = rr.filter((i) => i.verified);
 
-  // Ground persona anxieties in REAL verified complaints. Use the pre-independence-filter
-  // `rr`/`un` arrays (containment+entailment verified) rather than pack.rejectionReasons
-  // (which only keeps requireIndependent:true). For grounding we want ANY real shopper
-  // anxiety that passed the quote-verification gates — marketplace reviews ARE real fears,
-  // even if they're not independent sources. The independence flag is preserved on each
-  // item (sourceClass + independent field) so operators can see the mix.
-  const grievanceItems = [...rr, ...un].filter((i) => i.verified);
-  if (grievanceItems.length && pack.buyerSegments.length) {
-    const segList = pack.buyerSegments.map((s) => s.seed).join("\n- ");
-    const assignRaw = await llm.completeJson<{ assignments: { text: string; segment: string }[] }>({
-      messages: [{ role: "user", content:
-        `Assign each shopper complaint to the single best-fit buyer segment.\n` +
-        `Segments:\n- ${segList}\n\nComplaints (one per line):\n` +
-        grievanceItems.map((g, i) => `${i}. ${g.text}`).join("\n") +
-        `\n\nReturn JSON { "assignments": [ { "text": <exact complaint text>, "segment": <exact segment seed> } ] }.`,
-      }],
-    }).catch(() => ({ assignments: [] as { text: string; segment: string }[] }));
-    const segMap = new Map(assignRaw.assignments.map((a) => [a.text, a.segment]));
-    pack.groundedGrievances = tagGrievancesToSegments(
-      grievanceItems,
-      pack.buyerSegments,
-      (text) => segMap.get(text) ?? pack.buyerSegments[0]!.seed,
-    );
+  // Ground persona anxieties in REAL review/complaint voice.
+  // Prefer the dedicated raw-source extractor (containment-only, high recall). If it
+  // finds nothing, fall back to the older verified rejectionReasons/unmetNeeds path.
+  if (brief.sources?.length && pack.buyerSegments.length) {
+    pack.groundedGrievances = await extractGroundedGrievances(brief.sources, pack.buyerSegments, llm);
+  }
+
+  if (!pack.groundedGrievances.length) {
+    // Fallback: use the pre-independence-filter `rr`/`un` arrays (containment+entailment verified).
+    // Marketplace reviews ARE real fears, even if not independent; independence is preserved on each item.
+    const grievanceItems = [...rr, ...un].filter((i) => i.verified);
+    if (grievanceItems.length && pack.buyerSegments.length) {
+      const segList = pack.buyerSegments.map((s) => s.seed).join("\n- ");
+      const assignRaw = await llm.completeJson<{ assignments: { text: string; segment: string }[] }>({
+        messages: [{ role: "user", content:
+          `Assign each shopper complaint to the single best-fit buyer segment.\n` +
+          `Segments:\n- ${segList}\n\nComplaints (one per line):\n` +
+          grievanceItems.map((g, i) => `${i}. ${g.text}`).join("\n") +
+          `\n\nReturn JSON { "assignments": [ { "text": <exact complaint text>, "segment": <exact segment seed> } ] }.`,
+        }],
+      }).catch(() => ({ assignments: [] as { text: string; segment: string }[] }));
+      const segMap = new Map(assignRaw.assignments.map((a) => [a.text, a.segment]));
+      pack.groundedGrievances = tagGrievancesToSegments(
+        grievanceItems,
+        pack.buyerSegments,
+        (text) => segMap.get(text) ?? pack.buyerSegments[0]!.seed,
+      );
+    }
   }
 
   // Distribution grounding: blend supply proxy (existing LLM-estimate weights = supply signal)

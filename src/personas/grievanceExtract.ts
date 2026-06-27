@@ -1,13 +1,19 @@
 import { z } from "zod";
 import { LLMClient } from "../llm/client.ts";
 import type { GroundedGrievance } from "../categories/types.ts";
-import type { SourceDoc } from "../scrape/sources.ts";
 
 const MARKER_RE = /review|rating|stars?|complain|doesn'?t work|sting|irritat|fake|oxidiz|breakout|no results?|refund|waste|burn|rash|smell|texture/i;
 const ALLOWED_CLASSES = new Set(["marketplace", "community"]);
 const EXCLUDED_CLASSES = new Set(["brand", "affiliate", "editorial"]);
 
-export function shouldUseSourceForGrievances(s: Pick<SourceDoc, "sourceClass" | "rawText">): boolean {
+export interface GrievanceSource {
+  finalUrl: string;
+  sourceClass: string;
+  independent: boolean;
+  rawText: string;
+}
+
+export function shouldUseSourceForGrievances(s: Pick<GrievanceSource, "sourceClass" | "rawText">): boolean {
   if (ALLOWED_CLASSES.has(String(s.sourceClass))) return true;
   if (EXCLUDED_CLASSES.has(String(s.sourceClass))) return false;
   return MARKER_RE.test(s.rawText || "");
@@ -57,7 +63,7 @@ function chunkText(s: string, max = 8000): string[] {
 export interface ExtractOpts { maxTotal?: number; maxPerChunk?: number }
 
 export async function extractGroundedGrievances(
-  sources: SourceDoc[],
+  sources: GrievanceSource[],
   segments: { seed: string }[],
   llm = new LLMClient(),
   opts: ExtractOpts = {},
