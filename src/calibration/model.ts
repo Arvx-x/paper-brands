@@ -55,21 +55,55 @@ export function fitCalibration(observations: CalibrationObservation[]): Calibrat
     return passthrough(n, realMetric, warnings);
   }
 
-  // univariate OLS: y = a*x + c
-  const mx = x.reduce((s, v) => s + v, 0) / n;
-  const my = y.reduce((s, v) => s + v, 0) / n;
-  let sxy = 0, sxx = 0, syy = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = x[i]! - mx, dy = y[i]! - my;
-    sxy += dx * dy; sxx += dx * dx; syy += dy * dy;
-  }
-  const a = sxy / sxx;
-  const c = my - a * mx;
-  const r2 = syy === 0 ? 0 : (sxy * sxy) / (sxx * syy);
+  // Decide whether equity is identifiable
+  const eqVals = observations.map((o) => o.equityScore);
+  const haveEquity = eqVals.every((v) => typeof v === "number");
+  const e = haveEquity ? (eqVals as number[]) : [];
 
-  // residual RMSE
-  let sse = 0;
-  for (let i = 0; i < n; i++) { const e = y[i]! - (a * x[i]! + c); sse += e * e; }
+  // helper: solve 2-predictor OLS (x, e) via normal equations; null if near-singular
+  function solveBivariate(): { a: number; b: number; c: number } | null {
+    const ex = e;
+    let Sxx = 0, See = 0, Sxe = 0, Sxy = 0, Sey = 0, Sx = 0, Se = 0, Sy = 0;
+    for (let i = 0; i < n; i++) {
+      const xi = x[i]!, ei = ex[i]!, yi = y[i]!;
+      Sxx += xi * xi; See += ei * ei; Sxe += xi * ei;
+      Sxy += xi * yi; Sey += ei * yi; Sx += xi; Se += ei; Sy += yi;
+    }
+    // centered cross-products
+    const cxx = Sxx - (Sx * Sx) / n;
+    const cee = See - (Se * Se) / n;
+    const cxe = Sxe - (Sx * Se) / n;
+    const cxy = Sxy - (Sx * Sy) / n;
+    const cey = Sey - (Se * Sy) / n;
+    const det = cxx * cee - cxe * cxe;
+    if (cee === 0 || Math.abs(det) < 1e-9 * (cxx * cee + 1e-12)) return null; // no equity variance / collinear
+    const a = (cee * cxy - cxe * cey) / det;
+    const b = (cxx * cey - cxe * cxy) / det;
+    const c = (Sy - a * Sx - b * Se) / n;
+    return { a, b, c };
+  }
+
+  let a: number, c: number, b = 0, method: "linear" | "bivariate" = "linear";
+  let equityStatus: "not-learned" | "learned" = "not-learned";
+  const bi = haveEquity ? solveBivariate() : null;
+  if (bi) {
+    a = bi.a; b = bi.b; c = bi.c; method = "bivariate"; equityStatus = "learned";
+  } else {
+    // univariate OLS: y = a*x + c
+    const mx = x.reduce((s, v) => s + v, 0) / n;
+    const my = y.reduce((s, v) => s + v, 0) / n;
+    let sxy = 0, sxx = 0;
+    for (let i = 0; i < n; i++) { const dx = x[i]! - mx; sxy += dx * (y[i]! - my); sxx += dx * dx; }
+    a = sxy / sxx; c = my - a * mx;
+    warnings.push("equity-unidentifiable");
+  }
+
+  // R^2 and residual RMSE from the chosen model
+  const yhat = (i: number) => a * x[i]! + (method === "bivariate" ? b * e[i]! : 0) + c;
+  const my2 = y.reduce((s, v) => s + v, 0) / n;
+  let sse = 0, sst = 0;
+  for (let i = 0; i < n; i++) { const r = y[i]! - yhat(i); sse += r * r; const d = y[i]! - my2; sst += d * d; }
+  const r2 = sst === 0 ? 0 : 1 - sse / sst;
   const rmse = Math.sqrt(sse / n);
 
   const weak = r2 < R2_OK || a < 0;
@@ -77,20 +111,18 @@ export function fitCalibration(observations: CalibrationObservation[]): Calibrat
   const status = weak ? "weak" : "calibrated";
   const widen = weak ? WEAK_WIDEN : 1;
 
-  // equity not learned in this task (bivariate added in Task 4)
-  const equityStatus = "not-learned" as const;
-  warnings.push("equity-unidentifiable");
-
   return {
-    status, method: "linear", n, r2, residualRmse: rmse, realMetric, equityStatus, warnings,
-    apply(raw) {
+    status, method, n, r2, residualRmse: rmse, realMetric, equityStatus, warnings,
+    apply(raw, equityScore) {
       const appeal = a * raw + c;
-      const calibrated = clamp01(appeal);
+      const equityContribution = method === "bivariate" && typeof equityScore === "number" ? b * equityScore : 0;
+      const estimate = appeal + equityContribution;
+      const calibrated = clamp01(estimate);
       const half = Z * rmse * widen;
       return {
         status, raw, calibrated, lo: clamp01(calibrated - half), hi: clamp01(calibrated + half),
-        residualRmse: rmse, n, r2, method: "linear", realMetric,
-        appealContribution: appeal, equityContribution: 0, equityStatus, warnings,
+        residualRmse: rmse, n, r2, method, realMetric,
+        appealContribution: appeal, equityContribution, equityStatus, warnings,
       };
     },
   };

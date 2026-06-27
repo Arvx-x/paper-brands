@@ -75,3 +75,49 @@ test("monotonic: higher raw -> higher-or-equal calibrated (positive slope)", () 
   const fit = fitCalibration(data);
   expect(fit.apply(0.7).calibrated).toBeGreaterThanOrEqual(fit.apply(0.3).calibrated);
 });
+
+test("clean bivariate set -> learned, recovers a/b/c, contributions reconcile", () => {
+  // y = 0.06*appeal + 0.09*equity - 0.003 ; vary both independently
+  const rows: [number, number][] = [
+    [0.2, 0.1], [0.4, 0.5], [0.6, 0.2], [0.8, 0.7], [0.5, 0.9], [0.3, 0.4],
+  ];
+  const data = rows.map(([s, e]) =>
+    obs(s, 0.06 * s + 0.09 * e - 0.003, { equityScore: e }));
+  const fit = fitCalibration(data);
+  expect(fit.method).toBe("bivariate");
+  expect(fit.equityStatus).toBe("learned");
+  const r = fit.apply(0.5, 0.4);
+  expect(r.calibrated).toBeCloseTo(0.06 * 0.5 + 0.09 * 0.4 - 0.003, 4);
+  expect(r.equityContribution).toBeGreaterThan(0);
+  // appeal + equity contributions reconcile to pre-clamp estimate
+  expect(r.appealContribution + r.equityContribution).toBeCloseTo(r.calibrated, 4);
+});
+
+test("equity constant across obs -> not-learned, degrades to univariate", () => {
+  const data = [0.2, 0.4, 0.6, 0.8].map((s) =>
+    obs(s, 0.08 * s - 0.004, { equityScore: 0.3 }));
+  const fit = fitCalibration(data);
+  expect(fit.equityStatus).toBe("not-learned");
+  expect(fit.method).toBe("linear");
+  expect(fit.warnings).toContain("equity-unidentifiable");
+});
+
+test("equity collinear with appeal -> not-learned (near-singular)", () => {
+  const data = [0.2, 0.4, 0.6, 0.8].map((s) =>
+    obs(s, 0.08 * s - 0.004, { equityScore: s })); // equity == appeal
+  const fit = fitCalibration(data);
+  expect(fit.equityStatus).toBe("not-learned");
+});
+
+test("appeal calibrated + equity not-learned simultaneously (independent ladders)", () => {
+  const data = [0.2, 0.4, 0.6, 0.8, 0.5].map((s) => obs(s, 0.08 * s - 0.004));
+  const fit = fitCalibration(data);
+  expect(fit.status).toBe("calibrated");
+  expect(fit.equityStatus).toBe("not-learned");
+});
+
+test("apply(raw, equity) never mutates raw", () => {
+  const rows: [number, number][] = [[0.2, 0.1], [0.4, 0.5], [0.6, 0.2], [0.8, 0.7]];
+  const data = rows.map(([s, e]) => obs(s, 0.06 * s + 0.09 * e, { equityScore: e }));
+  expect(fitCalibration(data).apply(0.4, 0.5).raw).toBe(0.4);
+});
