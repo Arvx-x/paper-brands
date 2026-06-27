@@ -39,6 +39,18 @@ function arg(name: string, def?: string): string | undefined {
   return hit ? hit.split("=").slice(1).join("=") : def;
 }
 
+function parseArenaMode(): "cheap" | "deep" | undefined {
+  const raw = arg("mode");
+  if (raw === undefined) return undefined;
+  if (raw !== "cheap" && raw !== "deep") {
+    console.error(`invalid --mode='${raw}'; expected cheap|deep`);
+    process.exit(2);
+  }
+  const legacyDeep = arg("deep", "") === "true" || arg("deep", "") === "deep";
+  if (legacyDeep) console.error(`note: --mode overrides legacy --deep`);
+  return raw;
+}
+
 // Per-run model/provider overrides (applied before any loadConfig() call).
 const modelOverride = arg("model");
 const simOverride = arg("sim-model");
@@ -56,6 +68,7 @@ switch (cmd) {
       candidates: Number(arg("candidates", "4")),
       cohortSize: Number(arg("cohort", "40")),
       outDir: arg("out", "out"),
+      mode: parseArenaMode(),
       deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
       seed: Number(arg("seed", "0")),
       runs: Number(arg("runs", "1")),
@@ -72,6 +85,7 @@ switch (cmd) {
       candidates: Number(arg("candidates", "4")),
       cohortSize: Number(arg("cohort", "40")),
       outDir: arg("out", "out"),
+      mode: parseArenaMode(),
       deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
       seed: Number(arg("seed", "0")),
       runs: Number(arg("runs", "1")),
