@@ -10,6 +10,8 @@
  * are recorded as coverage gaps, never thrown.
  */
 
+import { extractJsonLdReviews, redditCommentText } from "./extract.ts";
+
 export interface FetchedPage {
   requestedUrl: string;
   finalUrl: string;
@@ -94,18 +96,11 @@ async function fetchRedditJson(
       headers: { "User-Agent": UA, Accept: "application/json" },
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as unknown;
     const listings = Array.isArray(data) ? data : [data];
-    const parts: string[] = [];
-    for (const listing of listings) {
-      for (const ch of listing?.data?.children ?? []) {
-        const d = ch?.data ?? {};
-        if (d.title) parts.push(String(d.title));
-        if (d.selftext) parts.push(String(d.selftext));
-        if (d.body) parts.push(String(d.body));
-      }
-    }
-    const text = parts.join(" — ").replace(/\s+/g, " ").trim().slice(0, maxChars);
+    // Walk the FULL comment tree (recursive) — complaints live in comments/replies,
+    // not just the post body. Allow more chars for comment-rich threads.
+    const text = redditCommentText(listings, Math.max(maxChars, 12000));
     return { requestedUrl, finalUrl: target, domain: "reddit.com", status: res.status, text, ok: text.length > 0 };
   } catch {
     return null;
@@ -147,7 +142,12 @@ export async function fetchPage(
       return { requestedUrl, finalUrl, domain, status: res.status, text: "", ok: false };
     }
     const html = await res.text();
-    const text = htmlToText(html).slice(0, maxChars);
+    // Pull embedded JSON-LD Review text first (survives even when visible reviews are
+    // JS-rendered), then the readable prose. htmlToText drops <script>, so extract before.
+    const ldReviews = extractJsonLdReviews(html);
+    const prose = htmlToText(html);
+    const combined = (ldReviews ? ldReviews + " — " : "") + prose;
+    const text = combined.slice(0, ldReviews ? Math.max(maxChars, 12000) : maxChars);
     return { requestedUrl, finalUrl, domain, status: res.status, text, ok: text.length > 0 };
   } catch {
     return { requestedUrl, finalUrl: url, domain: domainOf(url), status: 0, text: "", ok: false };
