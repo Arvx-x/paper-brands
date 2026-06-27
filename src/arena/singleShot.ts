@@ -5,7 +5,8 @@ import type { Persona } from "../personas/cohort.ts";
 import type { CategoryPack } from "../categories/types.ts";
 import type { BuyerArena, ArenaInput, MatchResult } from "./types.ts";
 import type { BlindCard } from "../brand/types.ts";
-import { cardFromConcept, cardFromArchetype } from "./cardBuild.ts";
+import { cardFromConcept, cardFromArchetype, cardFromBenchmark } from "./cardBuild.ts";
+import { optionLabel } from "./label.ts";
 import { renderPitchFlat } from "./card.ts";
 
 /** A choice made by one persona over a blinded slate of options. */
@@ -64,18 +65,17 @@ export class SingleShotArena implements BuyerArena {
     await pool(cohort, this.concurrency, async (persona) => {
       // Build a fresh shuffled slate for each persona.
       const entries: { card: BlindCard; conceptId: string }[] = [];
-      candidates.forEach((c, i) => {
-        const label = `OPTION-${String.fromCharCode(65 + i)}`;
-        entries.push({ card: cardFromConcept(c, label), conceptId: c.id });
+      let li = 0;
+      candidates.forEach((c) => {
+        entries.push({ card: cardFromConcept(c, optionLabel(li++)), conceptId: c.id });
       });
       if (includeCompetitors) {
-        pack.competitorArchetypes.forEach((a, i) => {
-          const label = `OPTION-${String.fromCharCode(65 + candidates.length + i)}`;
+        pack.competitorArchetypes.forEach((a) => {
           const price = midPrice(pack, a.pricePositioning);
-          entries.push({
-            card: cardFromArchetype(a, label, price),
-            conceptId: `competitor:${a.codeName}`,
-          });
+          entries.push({ card: cardFromArchetype(a, optionLabel(li++), price), conceptId: `competitor:${a.codeName}` });
+        });
+        (pack.benchmarkBrands ?? []).forEach((b) => {
+          entries.push({ card: cardFromBenchmark(b, optionLabel(li++)), conceptId: `benchmark:${b.auditId}` });
         });
       }
       const slate = shuffle(entries);

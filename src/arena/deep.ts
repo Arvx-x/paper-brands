@@ -1,7 +1,8 @@
 import { loadConfig } from "../config.ts";
 import type { BuyerArena, ArenaInput, MatchResult } from "./types.ts";
 import type { BlindCard } from "../brand/types.ts";
-import { cardFromConcept, cardFromArchetype } from "./cardBuild.ts";
+import { cardFromConcept, cardFromArchetype, cardFromBenchmark } from "./cardBuild.ts";
+import { optionLabel } from "./label.ts";
 import { deriveTraits } from "./traits.ts";
 import { negotiate } from "./negotiation.ts";
 import { makeRng } from "./stats.ts";
@@ -60,16 +61,17 @@ export class DeepNegotiationArena implements BuyerArena {
 
       // Build the blind slate (candidates + disguised competitors).
       const entries: { card: BlindCard; conceptId: string }[] = [];
-      input.candidates.forEach((c, i) => {
-        entries.push({ card: cardFromConcept(c, `OPTION-${String.fromCharCode(65 + i)}`), conceptId: c.id });
+      let li = 0;
+      input.candidates.forEach((c) => {
+        entries.push({ card: cardFromConcept(c, optionLabel(li++)), conceptId: c.id });
       });
       if (includeCompetitors) {
-        pack.competitorArchetypes.forEach((a, i) => {
+        pack.competitorArchetypes.forEach((a) => {
           const price = midPrice(pack, a.pricePositioning);
-          entries.push({
-            card: cardFromArchetype(a, `OPTION-${String.fromCharCode(65 + input.candidates.length + i)}`, price),
-            conceptId: `competitor:${a.codeName}`,
-          });
+          entries.push({ card: cardFromArchetype(a, optionLabel(li++), price), conceptId: `competitor:${a.codeName}` });
+        });
+        (pack.benchmarkBrands ?? []).forEach((b) => {
+          entries.push({ card: cardFromBenchmark(b, optionLabel(li++)), conceptId: `benchmark:${b.auditId}` });
         });
       }
 
