@@ -1,247 +1,173 @@
-# Design: Cost-Aware Arena Routing (Funnel)
+# Design: Arena Mode Selection (cheap | deep)
 
 **Date:** 2026-06-28
 **Status:** Draft (pending review)
 **Repo target:** `paper-brands`
-**Roadmap position:** Piece #4 — cost-aware routing.
+**Roadmap position:** Piece #4 — cost-aware routing (reduced scope: explicit mode selection).
 
 ---
 
 ## Context
 
-The tournament currently picks an arena via a binary `--deep` flag: single-shot (cheap, noisier)
-or deep negotiation (expensive ~5-10× per persona, rich WTP/confidence signal). Running deep over
-the full candidate slate spends the expensive arena on obvious losers.
+The tournament picks an arena via a binary `--deep` flag: single-shot (cheap, noisier) or deep
+negotiation (expensive ~5-10× per persona, rich WTP/confidence signal). This is functional but
+inexpressive — there is no first-class notion of an arena "mode", and the cost class each arena
+already advertises (`BuyerArena.costClass`) is never surfaced to the operator.
 
-We add a **two-stage funnel**: a cheap single-shot screen ranks all candidates, then only the
-contenders advance to the deep arena. The key risk — a noisy cheap screen discarding genuinely good
-ideas — is mitigated by advancing every candidate the screen *cannot statistically rule out*
-(CI overlap with the leader), bounded by a floor and cap. The operator stays in control by choosing
-the mode explicitly (no silent auto-routing), since cheap-vs-deep rank correlation is not yet
-validated.
+This piece replaces the bare boolean with an explicit, validated `--mode=cheap|deep`, surfaces the
+chosen mode + its cost class in the report/json, and keeps `--deep` working as an alias. The default
+behavior is unchanged (deep).
+
+**Funnel (two-stage cheap→deep routing) is explicitly out of scope** for now — see Out of Scope.
+This piece is the small, non-breaking foundation that a future funnel mode would extend.
 
 ### Decisions (locked during brainstorming)
 
-- **Three modes:** `cheap | deep | funnel`, selectable via CLI now (frontend toggle later).
-  Default stays `deep` (preserves current behavior; non-breaking).
-- **Funnel shape:** cheap single-shot screen over ALL candidates → deep negotiation over the
-  survivors.
-- **Survivor cutoff:** advance any candidate whose cheap Wilson CI overlaps the leader's, floored at
-  `--finalists` (default 3), capped at a max (default 5). The cheap arena only eliminates
-  statistically-sure losers — directly protecting good ideas from a noisy screen.
-- **No auto-mode heuristic.** Operator chooses; the funnel never silently decides to over/under-spend.
+- **Two modes now:** `cheap | deep`, selectable via `--mode` (frontend toggle later).
+- **Default stays `deep`** (preserves current behavior; non-breaking).
+- **No funnel, no auto-mode heuristic.** Operator chooses explicitly.
 
 ---
 
 ## 1. Architecture
 
-Routing is a thin orchestration layer in the tournament pipeline. The two arenas already implement
-`BuyerArena` (`kind`/`costClass`) and are unchanged. We add a mode selector + a funnel runner whose
-only genuinely new logic is a pure finalist selector.
+A thin selection layer in the tournament pipeline. Both arenas already implement `BuyerArena`
+(`kind`/`costClass`) and are unchanged. The only change is replacing the `opts.deep` boolean
+selection with an `ArenaMode` and surfacing it.
 
 ```
-TournamentOptions.mode: "cheap" | "deep" | "funnel"
+TournamentOptions.mode: "cheap" | "deep"   (default "deep"; `deep:true` is an alias)
    runTournament
-     ├─ "cheap"  → SingleShotArena over all candidates           (existing path)
-     ├─ "deep"   → DeepNegotiationArena over all candidates       (existing path, current default)
-     └─ "funnel" → runFunnel(...)
-                     ├─ STAGE 1: SingleShotArena over ALL candidates (small screen cohort)
-                     │     → score() → Wilson CIs (existing)
-                     ├─ selectFinalists(screenReport, {floor, cap})  [PURE]
-                     └─ STAGE 2: DeepNegotiationArena over finalists (full cohort)
-                           → score() → final report (+ funnel metadata)
+     ├─ "cheap" → new SingleShotArena(pack)        (existing path)
+     └─ "deep"  → new DeepNegotiationArena(pack)    (existing path, current default)
+   -> attach additive `arenaMode` info to TournamentOutput + formatReport line
 ```
 
-**New module:**
-```text
-src/pipeline/funnel.ts
-  selectFinalists(report, { floor, cap }) -> FinalistSelection   [PURE]
-  runFunnel(...) orchestrator (uses existing score/arena/cohort)
-src/pipeline/funnel.test.ts
-```
+**Modified files only (no new modules):**
+- `src/pipeline/tournament.ts` — add `mode?: ArenaMode` to `TournamentOptions`; resolve mode
+  (mode ?? deep-alias ?? "deep"); select arena from mode; add additive `arenaMode?` field to
+  `TournamentOutput`; render a `formatReport` line.
+- `src/cli.ts` — `--mode=cheap|deep` (validated), keep `--deep` alias; map both into `mode`.
 
-**Modified:**
-- `src/pipeline/tournament.ts` — `mode` option; dispatch; additive `funnel?` report field +
-  `formatReport` lines.
-- `src/cli.ts` — `--mode=cheap|deep|funnel` (keep `--deep` alias), `--finalists`,
-  `--finalists-cap`, `--screen-cohort`.
-
-Reuses `SingleShotArena`, `DeepNegotiationArena`, `score()`, `wilsonInterval`/CIs, `buildCohort`.
-No new dependencies.
+Reuses `SingleShotArena`, `DeepNegotiationArena`. No new dependencies. No new files.
 
 ---
 
 ## 2. Data model & options
 
 ```typescript
-export type ArenaMode = "cheap" | "deep" | "funnel";
+export type ArenaMode = "cheap" | "deep";
 
 export interface TournamentOptions {
   categoryId: string;
   candidates: number;
-  cohortSize: number;          // full cohort (deep, and funnel stage 2)
+  cohortSize: number;
   outDir?: string;
   mode?: ArenaMode;            // default "deep"
-  deep?: boolean;              // DEPRECATED alias: deep:true => mode:"deep" when mode unset
+  deep?: boolean;              // DEPRECATED alias: deep:true => mode "deep" when mode unset
   seed?: number;
   runs?: number;
-  // funnel-only (ignored in cheap/deep):
-  finalists?: number;          // floor for survivors (default 3)
-  finalistsCap?: number;       // hard cap on survivors (default 5)
-  screenCohortSize?: number;   // cheap-screen cohort (default = min(cohortSize, 20))
 }
 
-export interface FinalistSelection {
-  finalistIds: string[];       // advance to deep (screen-rank order)
-  eliminatedIds: string[];     // dropped at screen
-  leaderId: string;
-  reason: string;              // legible, e.g. "4 advanced (CI overlap); 2 eliminated (CI below leader)"
-}
-
-export interface FunnelReport {
-  mode: "funnel";
-  screenCohortSize: number;
-  deepCohortSize: number;
-  screened: number;            // candidates screened (cheap)
-  advanced: number;            // finalists run deep
-  eliminated: number;
-  floor: number;
-  cap: number;
-  leaderId: string;
-  finalistIds: string[];
-  eliminatedIds: string[];
-  screenCostClass: "cheap";
-  deepCostClass: "expensive";
+// Additive report field on TournamentOutput (like calibration/conceptDiversity)
+export interface ArenaModeInfo {
+  mode: ArenaMode;
+  kind: "single-shot" | "deep-negotiation";
+  costClass: "cheap" | "expensive";
 }
 ```
 
-**Data-flow points:**
-- **Screen uses a smaller cohort** (`screenCohortSize`, default `min(cohortSize, 20)`) — the saving.
-  Stage 2 (deep) uses full `cohortSize` on survivors.
-- **Same Council concepts + same `pack`** flow through both stages (no regeneration between stages).
-- `funnel?: FunnelReport` attached to `TournamentOutput` additively (absent in cheap/deep →
-  consumers unchanged), exactly like `calibration`/`conceptDiversity`.
-- **Back-compat:** `deep:true` (or `--deep`) with `mode` unset → `mode:"deep"`. Neither set →
-  default `"deep"` (current behavior preserved).
+**Resolution rule (back-compat):**
+```
+resolvedMode = opts.mode ?? "deep"   // default deep; `deep:true` also resolves to "deep"
+```
+(`opts.deep` only matters at the CLI layer, where the legacy `--deep` flag maps to `mode:"deep"`.
+Once `mode` is set, the boolean is irrelevant.)
+- `--mode=cheap` → cheap; `--mode=deep` → deep.
+- `--deep` (legacy) with `mode` unset → deep (unchanged).
+- Neither set → deep (unchanged).
+- `kind`/`costClass` are read off the constructed arena instance (`arena.kind`, `arena.costClass`)
+  so they never drift from the arena's own declaration.
 
-**Non-goals (YAGNI):** no auto-mode heuristic; no per-LLM-call budget accounting (cost lever is
-cohort-size reduction + finalist count, the honest measurable knobs); no cross-stage regeneration.
+`arenaMode?: ArenaModeInfo` is attached to `TournamentOutput` additively (always present going
+forward, but optional in the type so existing consumers/tests are unaffected).
+
+**Non-goals (YAGNI):** funnel/two-stage routing, auto-mode heuristic, budget accounting, smaller
+screen cohorts.
 
 ---
 
-## 3. selectFinalists (pure core)
+## 3. Dispatch, report & CLI
 
+### 3a. `runTournament` dispatch
+Replace the existing `const arena = opts.deep ? new DeepNegotiationArena(pack) : new SingleShotArena(pack);`
+with mode resolution:
 ```typescript
-selectFinalists(report: ArenaReport, opts: { floor: number; cap: number }): FinalistSelection
+const mode: ArenaMode = opts.mode ?? "deep";   // deep:true also resolves to "deep"
+const arena = mode === "cheap" ? new SingleShotArena(pack) : new DeepNegotiationArena(pack);
+const arenaMode: ArenaModeInfo = { mode, kind: arena.kind, costClass: arena.costClass };
 ```
+Add `arenaMode` to the `out: TournamentOutput` object literal (alongside `calibration`,
+`conceptDiversity`). All other tournament behavior (runOnce, replications, scoring, calibration)
+is unchanged.
 
-Deterministic, no LLM/I/O. Operates on the screen's per-concept scores, each carrying a Wilson
-interval (`winRate`, `winRateCiLow`, `winRateCiHigh` from existing `score()`).
-
-**Algorithm:**
-1. **Exclude non-candidates:** drop `conceptId` starting `benchmark:` or `competitor:`.
-2. **Leader:** highest `winRate`; its `winRateCiLow` is the reference bound.
-3. **CI-overlap test (quality guardrail):** a candidate advances if `winRateCiHigh >=
-   leader.winRateCiLow` (its CI still overlaps the leader's — cannot be statistically ruled out).
-   Candidates whose entire CI sits below the leader's lower bound are eliminated.
-4. **Floor:** if fewer than `floor` pass, advance the top `floor` by `winRate` anyway (never deep
-   fewer than the floor). If total candidates < floor, advance all.
-5. **Cap:** if more than `cap` pass, keep top `cap` by `winRate` (budget guardrail vs a flat screen).
-6. **Legible `reason`** naming which rule fired.
-
-**Worked examples:**
-- `[0.40,0.32,0.30,0.10,0.08]`, top-3 CIs overlap → top 3 advance, bottom 2 eliminated.
-- `[0.55,0.12,0.10,0.08]`, only leader stands alone → overlap yields 1 → **floor=3** advances top 3
-  (this answers "don't lose good ideas": a decisive screen still advances the floor).
-- `[0.22,0.21,0.20,0.20,0.19,0.18]` all overlap, n=6 → **cap=5** keeps top 5.
-
-**Why leader CI-low, not pairwise:** a single reference bound (leader's lower CI) deterministically
-expresses "could this plausibly be best?"; pairwise matrices don't change the advance set here (YAGNI).
-
-**Tests (pure, fixtures):** overlap advances mid-pack / eliminates confidently-worse; floor applied
-on high-separation; cap applied on flat slate; benchmark/competitor excluded; fewer than floor →
-advance all; deterministic; single candidate advances; `reason` reflects the rule fired.
-
----
-
-## 4. Funnel runner, report/CLI wiring, error handling
-
-### 4a. `runFunnel(...)`
+### 3b. `formatReport` line
+Near the top of the report (after the `Category:` line is a good spot), add:
 ```
-1. screenCohort = (await buildCohort(pack, screenCohortSize)).personas
-2. screenResults = await SingleShotArena(pack).run({ candidates, cohort: screenCohort, pack, opts: { includeCompetitors: true, seed } })
-   screenReport   = score(screenResults, candidates, pack.benchmarkBrands ?? [])
-3. sel = selectFinalists(screenReport, { floor, cap })                 // PURE
-4. finalists = candidates.filter(c => sel.finalistIds.includes(c.id))
-5. deepCohort = (await buildCohort(pack, cohortSize)).personas         // full cohort
-6. deepResults = await DeepNegotiationArena(pack).run({ candidates: finalists, cohort: deepCohort, pack, opts: { includeCompetitors: true, seed: seed + 1 } })
-   finalReport  = score(deepResults, finalists, pack.benchmarkBrands ?? [])
-7. return { report: finalReport, funnel: FunnelReport{...sel, sizes, counts} }
+Arena mode: deep (deep-negotiation, expensive)
+# or:
+Arena mode: cheap (single-shot, cheap)
 ```
-Notes: `includeCompetitors: true` is kept in BOTH stages so the blind competitor/benchmark controls
-still appear in the arena; `selectFinalists` excludes those ids from *candidacy* only. `score()` is
-passed the stage's candidate set (`candidates` for screen, `finalists` for deep) plus
-`pack.benchmarkBrands`.
-- **Final report = deep result over finalists** — ranks the winner, gets calibration applied, is
-  written to `tournament.json`. The cheap screen is internal (selection, not the headline).
-- Determinism: both stages seeded off `opts.seed` (deep uses a derived seed so cohorts differ but
-  reproduce). Concepts + pack identical across stages.
+Driven by `out.arenaMode`; absent → nothing prints (non-breaking).
 
-### 4b. `runTournament` dispatch (additive, back-compat)
-```typescript
-// Default is "deep". `deep:true` only matters for the alias path (it also resolves to "deep").
-const mode: ArenaMode = opts.mode ?? "deep";
-if (mode === "funnel") { const { report, funnel } = await runFunnel(...); out.funnel = funnel; }
-else { const arena = mode === "cheap" ? new SingleShotArena(pack) : new DeepNegotiationArena(pack); /* existing path */ }
-```
-`funnel?: FunnelReport` attached only in funnel mode (absent otherwise → non-breaking).
-
-### 4c. `formatReport` lines (after leaderboard, like calibration/diversity)
-```
-Arena mode: funnel (cheap screen → deep finalists)
-  Screened 6 candidates @ cohort 20 (cheap) → advanced 4 → deep @ cohort 40 (expensive)
-  Eliminated 2 (CI below leader): aromabalance, luxe-lip-solutions
-```
-Absent for cheap/deep → nothing prints.
-
-### 4d. CLI
+### 3c. CLI
 ```bash
-bun run tournament --category=lipcare-india --mode=funnel --candidates=6 --finalists=3 --cohort=40 [--screen-cohort=20] [--finalists-cap=5]
-bun run tournament --category=lipcare-india --deep    # => mode=deep (unchanged)
-bun run tournament --category=lipcare-india           # => default deep (unchanged)
+bun run tournament --category=lipcare-india --mode=cheap   --candidates=4 --cohort=40
+bun run tournament --category=lipcare-india --mode=deep    --candidates=4 --cohort=40
+bun run tournament --category=lipcare-india --deep         # legacy alias => deep (unchanged)
+bun run tournament --category=lipcare-india                # default deep (unchanged)
 ```
-- `--mode` validated to `cheap|deep|funnel`; bad value → error, exit 2.
-- `--deep` retained as alias; if both `--mode` and `--deep` given, `--mode` wins (warn).
+- Parse `--mode`: if provided, must be `cheap` or `deep`; invalid → error, exit 2.
+- Keep parsing `--deep` (legacy). If both given, `--mode` wins (print a one-line warning).
+- Apply to BOTH the `tournament` and `winrate` CLI cases (they share the same option shape).
 
-### 4e. Error handling / QUALITY map
+---
+
+## 4. Error handling & tests
+
+### Error handling / QUALITY map
 | Case | Behavior |
 |---|---|
-| Funnel screen yields no rankable candidates (all errored/abstained) | fall back to deep on ALL candidates + warn (don't silently drop the run) |
-| `floor` > candidate count | advance all candidates (no crash) |
-| finalists empty after selection | guard: advance top-`floor`; if still empty, error clearly |
-| invalid `--mode` | exit 2 with usage |
-| screen cohort build fails | propagate as existing cohort errors |
-| funnel on degraded pack | still runs (operator chose it); existing pack-degraded warning prints; no second gate (operator stays in control) |
+| invalid `--mode` value | error + usage, exit 2 (never silently fall back) |
+| both `--mode` and `--deep` | `--mode` wins; warn so the operator knows the legacy flag was overridden |
+| `mode` unset | default "deep" (back-compat) |
 
-Doctrine: the funnel never hides what it eliminated (every eliminated id + reason in report + json
-— declare known-unknowns); the cheap screen only removes statistically-sure losers (CI test);
-determinism preserved and measurable.
+Doctrine: the chosen mode + its cost class are surfaced in report + json (the operator always knows
+which arena ran and what it cost-class-wise), and an invalid mode fails loud rather than silently
+guessing.
 
-### 4f. Tests
-- `selectFinalists`: the 8 pure cases from §3.
-- `runFunnel` (fake arenas/fixtures, no LLM): screen→select→deep wiring; finalists subset passed to
-  deep; FunnelReport counts correct; all-errored screen → deep-on-all fallback.
-- dispatch: `mode` selects the right path; `deep:true`/`--deep` → deep; default deep; funnel attaches
-  `funnel?` and nothing else changes for cheap/deep (non-breaking).
-- report: funnel lines render; absent for cheap/deep.
-- CLI smoke: `--mode=funnel` runs; bad `--mode` exits 2.
+### Tests
+- **Mode resolution (pure-ish, via runTournament option handling or a small helper):**
+  - `mode:"cheap"` selects SingleShotArena (kind "single-shot", costClass "cheap").
+  - `mode:"deep"` selects DeepNegotiationArena (kind "deep-negotiation", costClass "expensive").
+  - `deep:true`, mode unset → deep.
+  - neither set → deep.
+  To keep this testable without running a full LLM tournament, factor mode→arena selection into a
+  tiny exported pure helper `resolveArena(pack, opts)` returning `{ arena, arenaMode }`, and unit-test
+  that helper directly.
+- **Report (pure `formatReport`):**
+  - `arenaMode` present → renders the "Arena mode: ..." line with correct kind/costClass.
+  - absent `arenaMode` → no arena-mode line (non-breaking).
+- **CLI smoke (light):** `--mode=cheap` and `--mode=deep` parse; invalid `--mode=foo` exits 2;
+  `--deep` still maps to deep.
+- Full suite stays green (additive change).
 
 ---
 
 ## Out of scope
+- **Funnel / two-stage cheap→deep routing** (cheap screen → deep finalists with CI-overlap cutoff).
+  This piece is the mode-selection foundation a future funnel would build on; not implemented now.
 - Auto-mode heuristic (pack-confidence / candidate-count driven selection).
-- Per-LLM-call budget accounting or hard cost ceilings.
-- Cross-stage concept regeneration or re-screening loops.
-- Measuring cheap-vs-deep rank correlation (a future calibration-of-the-screen task; the operator
-  staying in control sidesteps the need for now).
+- Per-LLM-call budget accounting or cost ceilings.
+- Measuring cheap-vs-deep rank correlation.
 - Frontend mode toggle (the CLI flag is the interim surface).
