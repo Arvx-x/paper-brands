@@ -87,6 +87,22 @@ test("same seed => identical results (determinism)", async () => {
   expect(JSON.stringify(a)).toBe(JSON.stringify(b));
 });
 
+test("parallel option negotiation yields identical results to a fixed-output fake (deterministic, order-independent)", async () => {
+  // negotiate fake returns per-card deterministic outcomes but resolves in RANDOM time,
+  // so if selection depended on completion order, results would vary. They must not.
+  const fake = async (_t: any, card: any) => {
+    await new Promise((r) => setTimeout(r, Math.random() * 5)); // jittered resolution
+    // conviction keyed to price so the winner is deterministic by VALUE, not timing.
+    const conviction = card.priceMinor <= 60000 ? 0.8 : 0.4;
+    return { conviction, finalWtp: 90000, affordable: true, bought: conviction > 0.5, turns: 2, errored: false, lastObjection: "o" };
+  };
+  // reuse the existing pack/candidates/cohort fixtures in this file (or import as needed)
+  const arena = new DeepNegotiationArena(pack, 4, fake as any);
+  const a = await arena.run({ candidates, cohort, pack, opts: { seed: 9 } });
+  const b = await arena.run({ candidates, cohort, pack, opts: { seed: 9 } });
+  expect(JSON.stringify(a)).toBe(JSON.stringify(b)); // identical across runs despite jitter
+});
+
 test("winning pick carries rich signals (confidence, perOptionWtpMinor, turnsToDecision)", async () => {
   const win = async (_t: any, card: any) => ({ conviction: 0.7, finalWtp: 90000, affordable: true, bought: true, turns: 2, errored: false, lastObjection: "safety" });
   const arena = new DeepNegotiationArena(pack, 4, win as any);

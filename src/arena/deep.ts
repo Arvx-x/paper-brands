@@ -4,7 +4,7 @@ import type { BlindCard } from "../brand/types.ts";
 import { cardFromConcept, cardFromArchetype, cardFromBenchmark } from "./cardBuild.ts";
 import { optionLabel } from "./label.ts";
 import { deriveTraits } from "./traits.ts";
-import { negotiate } from "./negotiation.ts";
+import { negotiate, type NegotiationOutcome } from "./negotiation.ts";
 import { makeRng } from "./stats.ts";
 
 function shuffle<T>(arr: T[], rnd: () => number): T[] {
@@ -79,13 +79,23 @@ export class DeepNegotiationArena implements BuyerArena {
       const rnd = makeRng(`${seed}::${persona.id}::slate`);
       const slate = shuffle(entries, rnd);
 
-      // Negotiate each option independently (over the SHUFFLED slate).
+      // Negotiate each option independently and IN PARALLEL (options don't depend on
+      // each other). Results are collected by slate index so the selection below stays
+      // deterministic regardless of completion order — identical output to sequential.
+      const OPTION_CONCURRENCY = Number(process.env.PB_OPTION_CONCURRENCY ?? "8");
+      const outcomes = new Array<NegotiationOutcome>(slate.length);
+      await pool(slate.map((_, i) => i), OPTION_CONCURRENCY, async (i) => {
+        const e = slate[i]!;
+        outcomes[i] = await this.negotiateFn(traits, e.card, pack.currency, `${seed}::${persona.id}`);
+      });
+
+      // Selection: iterate in ORIGINAL SLATE ORDER over the resolved outcomes.
       const perOptionWtpMinor: Record<string, number> = {};
       let best: { entry: typeof entries[number]; conviction: number; wtp: number; turns: number; objection: string } | null = null;
       let erroredCount = 0;
-
-      for (const e of slate) {
-        const o = await this.negotiateFn(traits, e.card, pack.currency, `${seed}::${persona.id}`);
+      for (let i = 0; i < slate.length; i++) {
+        const e = slate[i]!;
+        const o = outcomes[i]!;
         perOptionWtpMinor[e.conceptId] = o.finalWtp;
         if (o.errored) { erroredCount++; continue; }
         const affordable = o.affordable;
