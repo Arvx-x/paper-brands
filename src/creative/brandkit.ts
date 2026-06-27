@@ -15,6 +15,8 @@ export async function buildBrandKit(
   concept: BrandConcept,
   research?: CreativeResearch,
   llm = new LLMClient(),
+  /** Target market (geography) — drives market-appropriate casting. Not hardcoded. */
+  market?: string,
 ): Promise<BrandKit> {
   const director = new Agent(
     {
@@ -51,11 +53,17 @@ export async function buildBrandKit(
       (research?.notes
         ? `Competitor-creative research (match this quality bar, then differentiate):\n${research.notes}\n\n`
         : "") +
+      `Target market: ${market ?? "infer from the target customer"}.\n\n` +
       `Codify a complete BrandKit. Return JSON with EXACTLY these keys:\n` +
       `- essence: one line the whole look ladders back to\n` +
       `- palette[]: { name, hex, role(primary|secondary|accent|neutral|background) } — 4-6 swatches, real hex\n` +
       `- typography: { headingMood, bodyMood, pairing }\n` +
       `- artDirection: photography/illustration style, lighting, composition language (concrete, visual)\n` +
+      `- casting: WHO appears in the creatives — talent that authentically reflects THIS target market and ` +
+      `customer (ethnicity, age range, styling, settings). Specify the REAL diversity within the market — ` +
+      `e.g. for India, the full range of Indian skin tones (fair, wheatish, dusky, deep) and features, NOT a ` +
+      `single stereotyped tone; real, relatable, aspirational people, not foreign models standing in. ` +
+      `Include casting do's and don'ts. Derive this from the market — never default to Western talent.\n` +
       `- moodKeywords[]: 6-10 visual adjectives\n` +
       `- logoDirection: how the primary mark should look\n` +
       `- packagingDirection: front-of-pack look\n` +
@@ -74,6 +82,7 @@ export async function buildBrandKit(
     palette: raw.palette ?? [],
     typography: raw.typography ?? { headingMood: "", bodyMood: "", pairing: "" },
     artDirection: raw.artDirection ?? concept.packagingDirection,
+    casting: raw.casting ?? "",
     moodKeywords: raw.moodKeywords ?? [],
     logoDirection: raw.logoDirection ?? "",
     packagingDirection: raw.packagingDirection ?? concept.packagingDirection,
@@ -95,11 +104,14 @@ export function brandKitDigest(kit: BrandKit): string {
     `Palette: ${pal}`,
     `Type mood: ${kit.typography.headingMood} / ${kit.typography.bodyMood} (${kit.typography.pairing})`,
     `Art direction: ${kit.artDirection}`,
+    kit.casting ? `Casting (authentic to target market): ${kit.casting}` : "",
     `Mood: ${kit.moodKeywords.join(", ")}`,
     `Voice: ${kit.voice.tone}`,
     `DO: ${kit.visualDos.join("; ")}`,
     `DON'T: ${kit.visualDonts.join("; ")}`,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export async function saveBrandKit(kit: BrandKit, dir?: string): Promise<string> {

@@ -25,6 +25,8 @@ export const EvidencedItemSchema = z.preprocess(
     quote: z.string().default(""),
     sourceUrl: z.string().default(""),
     verified: z.boolean().default(false),
+    /** Was the matched source an independent (non-commercial) one? */
+    independent: z.boolean().default(false),
   }),
 );
 export type EvidencedItem = z.infer<typeof EvidencedItemSchema>;
@@ -39,6 +41,11 @@ export const CompetitorArchetypeSchema = z.object({
   weaknesses: z.array(z.string()),
   /** Quotes backing this archetype's claims/positioning (audit + falsifiability). */
   evidence: z.array(EvidencedItemSchema).default([]),
+  /**
+   * Real brands this archetype was clustered from — AUDIT-ONLY, never shown to
+   * the blind arena. Makes each archetype falsifiable against real SKUs.
+   */
+  realExamples: z.array(z.string()).default([]),
 });
 export type CompetitorArchetype = z.infer<typeof CompetitorArchetypeSchema>;
 
@@ -69,6 +76,8 @@ export const ProvenanceSchema = z.object({
   attributionRate: z.number().default(0),
   attributedItems: z.number().default(0),
   totalItems: z.number().default(0),
+  /** Verified items whose quote came from an independent (non-commercial) source. */
+  independentItems: z.number().default(0),
   /** Independent model that judged quote→claim entailment (principle 13). */
   verifierModel: z.string().optional(),
   skuCount: z.number().default(0),
@@ -101,11 +110,17 @@ export const CategoryPackSchema = z.object({
   competitorArchetypes: z.array(CompetitorArchetypeSchema),
   /** Hard constraints the brand strategist must respect. */
   complianceNotes: z.array(z.string()),
-  /** Persona seeds the cohort generator expands into buyer agents. */
+  /**
+   * Need/job-based buyer segments the cohort generator expands into agents.
+   * Weights are honest ESTIMATES grounded in the observed market signal
+   * (price-tier + subtype shares), NOT fabricated demand shares — `basis` records
+   * what each weight is derived from so it is never mistaken for measured demand.
+   */
   buyerSegments: z.array(
     z.object({
-      seed: z.string(),
-      weight: z.number().describe("relative share of category demand, 0..1"),
+      seed: z.string().describe("need/job-to-be-done based segment (NOT a demographic age band)"),
+      weight: z.number().describe("estimated relative share, 0..1 (supply-proxy estimate)"),
+      basis: z.string().default("").describe("what the weight is derived from (evidence/market signal)"),
     }),
   ),
   /** Evidence provenance + confidence. Optional for old packs; always set now. */

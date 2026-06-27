@@ -10,6 +10,7 @@ import { generateIdentity } from "./identity.ts";
 import { CreativeCouncil } from "./council.ts";
 import { renderCreative, composeEditPrompt } from "./render.ts";
 import { optimizeCreative } from "./optimize.ts";
+import { defaultStructure, type GenStructure } from "./structure.ts";
 import { brandSlug, type BrandKit, type JuryVerdict, type RenderedCreative } from "./types.ts";
 
 export interface CreativeFactoryOptions {
@@ -35,6 +36,10 @@ export interface CreativeFactoryOptions {
   /** Candidates/cohort when seeding from a category. */
   candidates?: number;
   cohortSize?: number;
+  /** Target market/geography — drives market-appropriate casting (not hardcoded). */
+  geography?: string;
+  /** Active generation structure (defaults to the v1 baseline). */
+  structure?: GenStructure;
   outDir?: string;
 }
 
@@ -68,11 +73,12 @@ export async function runCreativeFactory(
 ): Promise<CreativeFactoryResult> {
   const llm = new LLMClient();
   const ic = new ImageClient();
+  const structure = opts.structure ?? defaultStructure();
   const assetTypes = opts.assetTypes?.length ? opts.assetTypes : DEFAULT_ASSETS;
 
   // 1) Resolve the brand concept (identity input).
-  const { concept, category } = await resolveConcept(opts);
-  console.error(`[1/6] Brand: ${concept.name}`);
+  const { concept, category, market } = await resolveConcept(opts);
+  console.error(`[1/6] Brand: ${concept.name}  |  market: ${market}`);
 
   // 2) Competitor-creative research (optional).
   let research;
@@ -82,9 +88,9 @@ export async function runCreativeFactory(
     if (research) console.error(`      -> ${research.citationCount} citations`);
   }
 
-  // 3) BrandKit.
+  // 3) BrandKit (casting derived from the target market).
   console.error(`[3/6] Building BrandKit...`);
-  const kit = await buildBrandKit(concept, research, llm);
+  const kit = await buildBrandKit(concept, research, llm, market);
   const kitPath = await saveBrandKit(kit);
   console.error(`      -> ${kitPath}`);
 
@@ -96,7 +102,7 @@ export async function runCreativeFactory(
   let identityPaths;
   if (opts.identity !== false) {
     console.error(`[4/6] Generating visual identity (logo + packaging)...`);
-    const id = await generateIdentity(kit, { outDir, dry: opts.dry, imageClient: ic, llm });
+    const id = await generateIdentity(kit, { outDir, structure, dry: opts.dry, imageClient: ic, llm });
     refImages = id.refImages;
     identityPaths = { logo: id.logo.imagePath, packaging: id.packaging.imagePath };
     console.error(`      -> logo ${id.logo.imagePath}, packaging ${id.packaging.imagePath}`);
@@ -104,7 +110,7 @@ export async function runCreativeFactory(
 
   // 5) Brief -> spec for each asset type.
   console.error(`[5/6] Council generating specs for: ${assetTypes.join(", ")}...`);
-  const council = new CreativeCouncil(kit, llm);
+  const council = new CreativeCouncil(kit, llm, structure);
   const specs = await council.generateSpecs(assetTypes, opts.perType ?? 1);
   console.error(`      -> ${specs.length} specs`);
 
@@ -118,6 +124,7 @@ export async function runCreativeFactory(
       rounds: opts.rounds ?? 3,
       bestOf: opts.bestOf ?? 2,
       refImages,
+      structure,
       outDir,
       dry: opts.dry,
       llm,
@@ -141,6 +148,7 @@ export async function runCreativeFactory(
     const finalRender = await renderCreative(kit, res.champion.spec, {
       tier: "pro",
       imageSize: opts.imageSize ?? "2K",
+      structure,
       refImages: champBlob ? [champBlob, ...(refImages ?? [])] : refImages,
       promptOverride: champBlob
         ? composeEditPrompt(kit, res.champion.spec, [
@@ -179,10 +187,15 @@ export async function runCreativeFactory(
 
 async function resolveConcept(
   opts: CreativeFactoryOptions,
-): Promise<{ concept: BrandConcept; category: string }> {
+): Promise<{ concept: BrandConcept; category: string; market: string }> {
   if (opts.conceptPath) {
     const concept = BrandConceptSchema.parse(await Bun.file(opts.conceptPath).json());
-    return { concept, category: opts.categoryId ?? concept.heroSku };
+    return {
+      concept,
+      category: opts.categoryId ?? concept.heroSku,
+      // Fall back to the customer description so casting still has a market signal.
+      market: opts.geography ?? concept.targetCustomer,
+    };
   }
   if (!opts.categoryId) throw new Error("Creative Factory needs --category or --concept=<path>.");
   const pack = await resolvePack(opts.categoryId);
@@ -194,7 +207,7 @@ async function resolveConcept(
   const winnerId = t.report.winner?.conceptId;
   const concept = t.concepts.find((c) => c.id === winnerId) ?? t.concepts[0];
   if (!concept) throw new Error("No concept available to build creatives from.");
-  return { concept, category: pack.name };
+  return { concept, category: pack.name, market: opts.geography ?? pack.geography };
 }
 
 async function writeReport(r: CreativeFactoryResult): Promise<void> {

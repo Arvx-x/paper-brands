@@ -123,19 +123,30 @@ system and a self-optimizing library of high-polish creatives** — the same
 |---|---|
 | `CategoryPack` | **`BrandKit`** — palette (hex), type mood, art direction, voice, do/don't, negative prompt |
 | `Council` (strategy agents) | **Creative Council** — Art Director, Copywriter, Brand Guardian, Performance Marketer, Competitor-Creative Analyst, Prompt Engineer |
-| `Arena` (blind buyer win-rate) | **Jury** — multimodal vision panel scores the *rendered* image (polish / brand-consistency / clarity / conversion / differentiation) → 0..100 |
-| `optimize()` hill-climb | **`optimizeCreative()`** — mutate copy/layout/prompt, re-render, keep if jury score ↑ |
+| `Arena` (blind buyer win-rate) | **Jury** — stringent 4-judge multimodal panel (art director / brand guardian / growth / typography-detail) scores the *rendered* image → 0..100 |
+| `optimize()` hill-climb | **`optimizeCreative()`** — best-of-N + visual iteration; keep only if jury score beats the champion by a significance margin |
 
 Flow: `concept → [competitor-creative research] → BrandKit → identity (logo +
-packaging, jury-picked) → brief → spec → render → jury → hill-climb → final pro
+packaging, jury-picked) → brief → spec → render → jury → optimize → final pro
 render → library`. The chosen **logo/packaging become reference images** fed into
 every later render, so the whole library stays visually consistent. The resulting
 BrandKit + identity refs then power on-demand generation of **any asset at any
 dimension** (`creative-gen`).
 
+**Quality controls (what makes the output non-generic):**
+- *Art-director-grade prompts* — the Prompt Engineer specifies subject, camera/lens, lighting, color grade, composition, texture, mood, and typography; `composePrompt` assembles them into a cinematic brief.
+- *Market-appropriate casting* — `BrandKit.casting` is **derived from the target market** (`--geo`), never hardcoded: who appears in the creatives, with the real diversity of that market (e.g. for India, the full range of Indian skin tones, not a foreign stand-in or a single stereotyped tone). Injected into every people-featuring render and gated by the jury's `marketFit` axis.
+- *Shared craft standards* (`standards.ts`) — a single list of elite-craft directives and amateur anti-patterns (Frankenstein compositing, mismatched depth of field, gradient readability scrims, floating CTAs, cliché copy, generic type) injected into the renderer, the council, **and** the jury, so the bar is enforced everywhere.
+- *Best-of-N* — each spec renders `--best-of` takes; the jury picks the strongest as the starting champion.
+- *Visual iteration* — each round, the jury critiques the **actual image**, then the renderer **edits that image in place** (passing it back as a reference) to apply only the targeted fixes — converging to craft instead of re-rolling.
+- *Consistency lock* — whenever identity refs are supplied, the renderer forces the product/logo to match them exactly (a stick stays a stick).
+- *Stringent 6-judge jury with hard gates* — art director, brand guardian, growth, typography-detail, market-realism/casting, and a common-sense skeptic, scored on a harsh curve (most AI drafts land 4–6). A failure on a high-stakes axis (`marketFit`, `brandConsistency`, `visualQuality`) **caps** the overall score — polish can't rescue an off-market or off-brand creative.
+- *Significance margin* — a challenger must beat the champion by `acceptMargin` (default 1.5) to win, so the loop doesn't chase LLM scoring noise.
+
 Rendering uses **Gemini image models** via the Interactions API
-(`PB_IMAGE_MODEL` flash for drafts/iterations, `PB_IMAGE_MODEL_PRO` for finals);
-the jury sees pixels via the OpenAI-compat vision layer (`PB_VISION_MODEL`).
+(`PB_IMAGE_MODEL` = `gemini-3.1-flash-image` for drafts/iterations,
+`PB_IMAGE_MODEL_PRO` = `gemini-3-pro-image` for finals); the jury sees pixels via
+the OpenAI-compat vision layer (`PB_VISION_MODEL`).
 
 ```bash
 # Full loop from a category (seeds a tournament, then builds creatives)

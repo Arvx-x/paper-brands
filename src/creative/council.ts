@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { Agent } from "../agents/agent.ts";
 import { LLMClient } from "../llm/client.ts";
-import { CREATIVE_COUNCIL_SPECS } from "./agents.ts";
 import { brandKitDigest } from "./brandkit.ts";
+import { defaultStructure, type GenStructure } from "./structure.ts";
 import {
   CreativeBriefSchema,
   CreativeSpecSchema,
@@ -18,17 +18,23 @@ const BriefsSchema = z.object({ briefs: z.array(CreativeBriefSchema.partial({ id
 
 /**
  * The Creative Council turns a BrandKit into creative briefs and synthesizes
- * fully-specified, render-ready CreativeSpecs. Mirrors the strategy Council:
- * specialists propose, the Prompt Engineer synthesizes the buildable artifact.
+ * fully-specified, render-ready CreativeSpecs. The roster, the fields it fills,
+ * and how it's instructed all come from the active GenStructure, so the
+ * meta-optimizer can evolve the council itself.
  */
 export class CreativeCouncil {
   private agents: Agent[];
-  constructor(private kit: BrandKit, private llm = new LLMClient()) {
-    this.agents = CREATIVE_COUNCIL_SPECS.map((s) => new Agent(s, llm));
+  constructor(
+    private kit: BrandKit,
+    private llm = new LLMClient(),
+    private structure: GenStructure = defaultStructure(),
+  ) {
+    this.agents = this.structure.council.map((s) => new Agent(s, llm));
   }
 
+  /** Find an agent by role, falling back to the first agent if the role is absent. */
   private agent(role: string): Agent {
-    return this.agents.find((a) => a.spec.role === role)!;
+    return this.agents.find((a) => a.spec.role.toLowerCase().includes(role.toLowerCase())) ?? this.agents[0]!;
   }
 
   /** Propose a slate of creative briefs across the requested asset types. */
@@ -62,28 +68,30 @@ export class CreativeCouncil {
     const palette = this.kit.palette.map((p) => `${p.name} ${p.hex}`).join(", ");
 
     const engineer = this.agent("Prompt Engineer");
+    const fieldLines = this.structure.specFields.map((f) => `- ${f.key}: ${f.instruction}`).join("\n");
+    const fieldKeys = this.structure.specFields.map((f) => f.key).join(", ");
     const raw = await engineer.respondJson<Record<string, unknown>>(
       `BrandKit:\n${digest}\nExact palette hex: ${palette}\nArt direction: ${this.kit.artDirection}\n\n` +
         `Brief:\n${JSON.stringify(brief, null, 2)}\n\n` +
-        `Direct ONE award-winning creative for a state-of-the-art image model — the ` +
-        `kind of work that wins Cannes Lions, not a stock template. Think like a top ` +
-        `art director shooting an editorial campaign. Aspect ratio will be ${assetAspect(brief.assetType)}.\n\n` +
-        `Specify EACH field concretely (no vague adjectives without a visual anchor):\n` +
-        `- subject: the hero and exactly how it's styled, posed, and placed\n` +
-        `- camera: shot type, specific lens (e.g. 85mm), angle, depth of field/bokeh\n` +
-        `- lighting: setup, direction, quality (soft/hard), time of day, any rim/fill\n` +
-        `- colorGrade: which BrandKit hex dominate, contrast, a film/grade reference\n` +
-        `- composition: framing, focal hierarchy, negative space, where text sits\n` +
-        `- texture: materials and surface finish (matte, dewy, ceramic, paper grain)\n` +
-        `- mood: the single emotion it must evoke\n` +
-        `- typographyTreatment: how the headline/subhead/CTA are set and positioned\n` +
-        `- imagePrompt: a single flowing paragraph weaving the above into a vivid, ` +
+        `${this.structure.specSystem} Aspect ratio will be ${assetAspect(brief.assetType)}.\n\n` +
+        `Specify EACH of these art-direction fields concretely (no vague adjectives without a visual anchor):\n` +
+        `${fieldLines}\n` +
+        `Then also provide:\n` +
+        `- imagePrompt: a single flowing paragraph weaving the above fields into a vivid, ` +
         `render-ready description with the exact palette hex and all IN-IMAGE TEXT spelled out verbatim\n` +
         `- headline, subhead, cta: the copy (tight, in brand voice)\n` +
         `- negativePrompt: what to avoid for this specific shot\n` +
-        `- layout, rationale\n` +
-        `Stay strictly within the BrandKit. Return ONLY the JSON object.`,
+        `- rationale: one line on why this wins\n\n` +
+        `Stay strictly within the BrandKit. Return ONLY a JSON object with keys: ` +
+        `${fieldKeys}, imagePrompt, headline, subhead, cta, negativePrompt, rationale.`,
     );
+
+    // Collect the structure's art-direction fields into the dynamic `direction` map.
+    const direction: Record<string, string> = {};
+    for (const f of this.structure.specFields) {
+      const v = raw[f.key];
+      if (v != null && String(v).trim()) direction[f.key] = String(v);
+    }
 
     return CreativeSpecSchema.parse({
       id: `${brief.id}-spec`,
@@ -95,14 +103,7 @@ export class CreativeCouncil {
       cta: raw.cta ?? "",
       layout: raw.layout ?? "",
       imagePrompt: raw.imagePrompt ?? brief.bigIdea,
-      subject: raw.subject ?? "",
-      camera: raw.camera ?? "",
-      lighting: raw.lighting ?? "",
-      colorGrade: raw.colorGrade ?? "",
-      composition: raw.composition ?? "",
-      texture: raw.texture ?? "",
-      mood: raw.mood ?? "",
-      typographyTreatment: raw.typographyTreatment ?? "",
+      direction,
       negativePrompt: raw.negativePrompt ?? "",
       rationale: raw.rationale ?? "",
     });

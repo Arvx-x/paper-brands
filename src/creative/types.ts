@@ -57,6 +57,13 @@ export const BrandKitSchema = z.object({
   }),
   /** Photography / illustration style, lighting, composition language. */
   artDirection: FlexString,
+  /**
+   * Who appears in the creatives — derived from the target market + customer,
+   * NOT hardcoded. Must specify authentic, market-appropriate talent and the
+   * real diversity within it (e.g. for India: the full range of Indian skin
+   * tones, not a single stereotyped tone), styling, and casting do's/don'ts.
+   */
+  casting: FlexString.default(""),
   moodKeywords: z.array(z.string()),
   logoDirection: FlexString,
   packagingDirection: FlexString,
@@ -100,6 +107,12 @@ export const CreativeSpecSchema = z.object({
   layout: FlexString,
   /** The prompt sent to the image model — concrete, brand-faithful, render-ready. */
   imagePrompt: FlexString,
+  /**
+   * Structure-driven art-direction fields, keyed by the active GenStructure's
+   * specFields. Lets the meta-optimizer add/remove fields without a schema change.
+   * (The named fields below are the v1 defaults / back-compat.)
+   */
+  direction: z.record(z.string()).default({}),
   /** Art-direction detail — what separates a world-class render from a stock one. */
   subject: FlexString.default("").describe("the hero subject and how it's styled/posed"),
   camera: FlexString.default("").describe("shot type, lens, angle, depth of field"),
@@ -130,9 +143,13 @@ export const JuryScoreSchema = z.object({
   messageClarity: z.number(),
   conversionPotential: z.number(),
   differentiation: z.number(),
+  /** Casting/cultural authenticity & realism for the target market. High stakes. */
+  marketFit: z.number().default(5),
 });
+export type JuryScores = z.infer<typeof JuryScoreSchema>;
 export const JuryVerdictSchema = z.object({
-  scores: JuryScoreSchema,
+  /** Axis scores keyed by the active structure's rubric (0..10 each). */
+  scores: z.record(z.number()),
   /** Weighted aggregate, 0..100 — the optimizer's objective. */
   overall: z.number(),
   critique: z.string(),
@@ -140,24 +157,38 @@ export const JuryVerdictSchema = z.object({
 });
 export type JuryVerdict = z.infer<typeof JuryVerdictSchema>;
 
-/** Default rubric weights (sum to 1). */
+/** Default rubric weights (sum to 1). marketFit is weighted high — it's a gate. */
 export const JURY_WEIGHTS = {
-  visualQuality: 0.3,
-  brandConsistency: 0.25,
-  messageClarity: 0.2,
-  conversionPotential: 0.15,
-  differentiation: 0.1,
+  visualQuality: 0.25,
+  brandConsistency: 0.2,
+  marketFit: 0.2,
+  messageClarity: 0.15,
+  conversionPotential: 0.12,
+  differentiation: 0.08,
 } as const;
 
-export function aggregateScore(s: z.infer<typeof JuryScoreSchema>): number {
+/**
+ * Weighted 0..100 aggregate with HARD GATES: a creative that fails an essential
+ * axis (off-market casting, off-brand, or visibly AI/amateur) cannot be rescued
+ * by polish elsewhere. Encodes "fail loud and hard" — the highest-stakes axes
+ * (marketFit, brandConsistency) cap the whole score when they fall below bar.
+ */
+export function aggregateScore(s: JuryScores): number {
   const w = JURY_WEIGHTS;
   const raw =
     s.visualQuality * w.visualQuality +
     s.brandConsistency * w.brandConsistency +
+    s.marketFit * w.marketFit +
     s.messageClarity * w.messageClarity +
     s.conversionPotential * w.conversionPotential +
     s.differentiation * w.differentiation;
-  return Math.round(raw * 10 * 10) / 10; // 0..10 weighted -> 0..100, 1 dp
+  let overall = raw * 10; // 0..10 weighted -> 0..100
+
+  // Hard gates: an essential failure caps the ceiling regardless of polish.
+  if (s.marketFit < 5) overall = Math.min(overall, 50);
+  if (s.brandConsistency < 5) overall = Math.min(overall, 55);
+  if (s.visualQuality < 4) overall = Math.min(overall, 45);
+  return Math.round(overall * 10) / 10;
 }
 
 export function assetAspect(assetType: string): string {

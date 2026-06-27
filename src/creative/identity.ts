@@ -2,6 +2,7 @@ import { ImageClient, readImage, type ImageBlob } from "../llm/imageClient.ts";
 import { LLMClient } from "../llm/client.ts";
 import { renderCreative } from "./render.ts";
 import { juryScore } from "./jury.ts";
+import { defaultStructure, type GenStructure } from "./structure.ts";
 import { CreativeSpecSchema, type BrandKit, type CreativeSpec, type RenderedCreative } from "./types.ts";
 
 export interface IdentityResult {
@@ -43,11 +44,19 @@ function identitySpec(kit: BrandKit, kind: "logo" | "packaging"): CreativeSpec {
  */
 export async function generateIdentity(
   kit: BrandKit,
-  opts: { outDir: string; variants?: number; dry?: boolean; imageClient?: ImageClient; llm?: LLMClient },
+  opts: {
+    outDir: string;
+    variants?: number;
+    dry?: boolean;
+    structure?: GenStructure;
+    imageClient?: ImageClient;
+    llm?: LLMClient;
+  },
 ): Promise<IdentityResult> {
   const ic = opts.imageClient ?? new ImageClient();
   const llm = opts.llm ?? new LLMClient();
   const variants = opts.variants ?? 2;
+  const structure = opts.structure ?? defaultStructure();
 
   const best = async (kind: "logo" | "packaging"): Promise<RenderedCreative> => {
     const base = identitySpec(kit, kind);
@@ -56,12 +65,13 @@ export async function generateIdentity(
         const spec = { ...base, id: `${base.id}-${i + 1}` };
         const r = await renderCreative(kit, spec, {
           tier: kind === "logo" ? "flash" : "pro",
+          structure,
           dry: opts.dry,
           outDir: `${opts.outDir}/identity`,
           client: ic,
         }).catch(() => null);
         if (!r) return null;
-        const v = await juryScore(r, kit, { imageClient: ic, llm });
+        const v = await juryScore(r, kit, { structure, imageClient: ic, llm });
         return { r, score: v.overall };
       }),
     );

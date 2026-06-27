@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { loadConfig } from "../config.ts";
 import { ImageClient, writeImage, type ImageBlob } from "../llm/imageClient.ts";
 import { brandKitDigest } from "./brandkit.ts";
+import { defaultStructure, type GenStructure } from "./structure.ts";
 import type { BrandKit, CreativeSpec, RenderedCreative } from "./types.ts";
 
 export interface RenderOptions {
@@ -16,54 +17,67 @@ export interface RenderOptions {
   promptOverride?: string;
   /** Filename stem override (defaults to spec.id) — lets callers avoid collisions. */
   nameStem?: string;
+  /** Active generation structure (template/directives/negatives). */
+  structure?: GenStructure;
   outDir: string;
   client?: ImageClient;
 }
 
 /**
- * Compose the full image prompt from the BrandKit + spec and render it. The kit
- * is folded into the prompt and the negative prompts are merged, so every asset
- * in the library shares one look. Passing identity images as refs locks it in.
+ * Compose the final image prompt by filling the active GenStructure's template
+ * with the BrandKit + spec. The structure owns the wording, directives, and
+ * negatives, so the meta-optimizer can rewrite how prompts are built without a
+ * code change. v1's template reproduces the known-good v3 prompt exactly.
  */
-export function composePrompt(kit: BrandKit, spec: CreativeSpec): string {
+export function composePrompt(
+  kit: BrandKit,
+  spec: CreativeSpec,
+  structure: GenStructure = defaultStructure(),
+): string {
   const text =
     [spec.headline, spec.subhead, spec.cta].filter(Boolean).map((t) => `"${t}"`).join(", ") ||
     "(no text)";
-  // Only include art-direction lines the spec actually filled in.
-  const direction = (
-    [
-      ["SUBJECT", spec.subject],
-      ["CAMERA", spec.camera],
-      ["LIGHTING", spec.lighting],
-      ["COLOR GRADE", spec.colorGrade],
-      ["COMPOSITION", spec.composition || spec.layout],
-      ["TEXTURE", spec.texture],
-      ["MOOD", spec.mood],
-      ["TYPOGRAPHY", spec.typographyTreatment],
-    ] as const
-  )
+
+  // Build the {direction} block from the structure-driven `direction` map,
+  // falling back to legacy named fields for specs produced before this change.
+  const dirEntries = Object.keys(spec.direction).length
+    ? Object.entries(spec.direction)
+    : ([
+        ["subject", spec.subject],
+        ["camera", spec.camera],
+        ["lighting", spec.lighting],
+        ["colorGrade", spec.colorGrade],
+        ["composition", spec.composition || spec.layout],
+        ["texture", spec.texture],
+        ["mood", spec.mood],
+        ["typographyTreatment", spec.typographyTreatment],
+      ] as [string, string][]);
+  const direction = dirEntries
     .filter(([, v]) => v && String(v).trim())
-    .map(([k, v]) => `${k}: ${v}`)
+    .map(([k, v]) => `${labelize(k)}: ${v}`)
     .join("\n");
 
-  return [
-    `Art-direct and render an award-winning ${spec.assetType} (${spec.aspect}) for "${kit.brandName}" —`,
-    `editorial campaign quality, the kind of work that wins design awards. Not a stock template.`,
-    ``,
-    `BRAND SYSTEM (obey strictly):`,
-    brandKitDigest(kit),
-    ``,
-    `CREATIVE DIRECTION:`,
-    spec.imagePrompt,
-    direction ? `\n${direction}` : "",
-    ``,
-    `IN-IMAGE TEXT — render crisp, kerned, correctly spelled, integrated into the design: ${text}`,
-    ``,
-    `Photorealistic finish where applicable, flawless craft, intentional negative space, ` +
-      `magazine-grade polish. Avoid: ${[kit.negativePrompt, spec.negativePrompt].filter(Boolean).join("; ")}.`,
-  ]
-    .filter((l) => l !== "")
+  const negatives = [...structure.negatives, kit.negativePrompt, spec.negativePrompt]
+    .filter(Boolean)
+    .join("; ");
+
+  return structure.promptTemplate
+    .replaceAll("{assetType}", spec.assetType)
+    .replaceAll("{aspect}", spec.aspect)
+    .replaceAll("{brandName}", kit.brandName)
+    .replaceAll("{brandSystem}", brandKitDigest(kit))
+    .replaceAll("{imagePrompt}", spec.imagePrompt)
+    .replaceAll("{direction}", direction ? `\n${direction}` : "")
+    .replaceAll("{text}", text)
+    .replaceAll("{directives}", structure.directives.join(" "))
+    .replaceAll("{negatives}", negatives)
+    .split("\n")
+    .filter((l, i, arr) => !(l.trim() === "" && arr[i - 1]?.trim() === "")) // collapse blank runs
     .join("\n");
+}
+
+function labelize(key: string): string {
+  return key.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase();
 }
 
 /**
@@ -94,7 +108,15 @@ export async function renderCreative(
 ): Promise<RenderedCreative> {
   const cfg = loadConfig();
   const model = opts.tier === "pro" ? cfg.imageModelPro : cfg.imageModel;
-  const prompt = opts.promptOverride ?? composePrompt(kit, spec);
+  let prompt = opts.promptOverride ?? composePrompt(kit, spec, opts.structure);
+  // When identity/product references are supplied, force fidelity to them so the
+  // product/logo don't drift across the library (a stick stays a stick).
+  if (!opts.promptOverride && opts.refImages?.length) {
+    prompt +=
+      `\n\nBRAND CONSISTENCY — reference image(s) attached: the product and logo MUST match them ` +
+      `EXACTLY (same form factor, proportions, colour, finish, label, and wordmark). Reuse that ` +
+      `identity verbatim; do NOT redesign or restyle it. Place it naturally into this composition.`;
+  }
   const stem = opts.nameStem ?? spec.id;
   await mkdir(opts.outDir, { recursive: true });
 

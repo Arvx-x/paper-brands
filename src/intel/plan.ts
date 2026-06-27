@@ -239,19 +239,81 @@ export async function loadResearchPlan(category: string, dir?: string): Promise<
 }
 
 /**
+ * Mandatory INDEPENDENT lenses, always injected regardless of what the agent
+ * planned. Source selection upstream dominates everything downstream (principle
+ * 19), and the agent tends to over-index on marketing/SEO sources — so we force
+ * genuine customer voice: community discussion, complaints, and independent
+ * editorial. Queries are site-targeted to actually surface those domains.
+ */
+function mandatoryIndependentLenses(c: string, geo: string): ResearchLens[] {
+  return [
+    {
+      id: "community-voice",
+      lens: "Independent community discussion (Reddit/Quora/forums)",
+      system:
+        "You read REAL user discussion on Reddit, Quora, and forums. Surface verbatim " +
+        "customer language — recommendations, holy-grail picks, and especially honest " +
+        "gripes. Quote ACTUAL USERS, never brands, sellers, or marketing copy.",
+      queries: [
+        `${c} review site:reddit.com`,
+        `${c} recommendations site:quora.com${g(geo)}`,
+        `${c} honest review reddit${g(geo)}`,
+        `${c} what actually works forum discussion${g(geo)}`,
+      ],
+    },
+    {
+      id: "complaints",
+      lens: "Complaints & negative reviews",
+      system:
+        "You hunt DISSATISFACTION: 1-star reviews, 'doesn't work', irritation/allergy, " +
+        "stickiness, wears off, returns/refunds. Quote the actual complaint language from " +
+        "real buyers — this is the most important and most under-surfaced signal.",
+      queries: [
+        `${c} 1 star review complaint${g(geo)}`,
+        `${c} "doesn't work" OR disappointed review`,
+        `${c} irritation OR allergic reaction review${g(geo)}`,
+        `${c} "waste of money" OR returned review`,
+      ],
+    },
+    {
+      id: "editorial-independent",
+      lens: "Independent editorial & expert reviews",
+      system:
+        "You read INDEPENDENT editorial reviews and dermatologist/expert guidance — NOT " +
+        "brand-owned blogs and NOT sponsored 'best of' listicles. Surface candid expert " +
+        "criteria and honest pros/cons.",
+      queries: [
+        `${c} dermatologist review${g(geo)}`,
+        `${c} independent review not sponsored${g(geo)}`,
+        `best ${c}${g(geo)} expert buying guide tested`,
+      ],
+    },
+  ];
+}
+
+/** Inject mandatory independent lenses (dedup by id) into any plan. */
+function ensureIndependentLenses(plan: ResearchPlan): ResearchPlan {
+  const have = new Set(plan.lenses.map((l) => l.id));
+  const add = mandatoryIndependentLenses(plan.category, plan.geography).filter((l) => !have.has(l.id));
+  return add.length ? { ...plan, lenses: [...plan.lenses, ...add] } : plan;
+}
+
+/**
  * Resolve the plan for a harvest: prefer a persisted plan, else derive one via
- * the agent and persist it, else fall back to the deterministic default.
+ * the agent and persist it, else fall back to the deterministic default. The
+ * mandatory independent lenses are injected last, so customer-voice sourcing is
+ * guaranteed even for an old cached plan.
  */
 export async function resolvePlan(
   brief: PlanBrief,
   opts: { mode?: "auto" | "default"; llm?: LLMClient } = {},
 ): Promise<ResearchPlan> {
-  if (opts.mode === "default") return defaultPlan(brief);
+  if (opts.mode === "default") return ensureIndependentLenses(defaultPlan(brief));
   const existing = await loadResearchPlan(brief.category);
-  if (existing) return existing;
+  if (existing) return ensureIndependentLenses(existing);
   const plan = await buildResearchPlan(brief, opts.llm);
   await saveResearchPlan(plan).catch(() => {});
-  return plan;
+  return ensureIndependentLenses(plan);
 }
 
 function slug(s: string): string {

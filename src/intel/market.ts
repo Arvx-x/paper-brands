@@ -18,14 +18,31 @@ export interface CategoryBrief {
   /** Harvested real-world corpus excerpts to ground the pack in evidence. */
   evidence?: string;
   /**
-   * Concatenated RAW fetched source text — the quotable substrate. Every claim's
-   * `quote` must literally appear here to be marked verified (attribution).
+   * Fetched sources — the quotable substrate. A claim is attributed only if its
+   * quote literally appears in one of these; customer-voice claims additionally
+   * require the matched source to be INDEPENDENT (not brand/affiliate/marketplace).
    */
-  sourceText?: string;
+  sources?: EvidenceSource[];
   /** Data-derived price bands (from real SKU prices); overrides LLM guess. */
   priceBands?: { label: string; lowMinor: number; highMinor: number }[];
+  /**
+   * Compact real market-structure signal (price-tier shares + observed product
+   * subtypes) used to GROUND buyer-segment weights in the actual assortment
+   * instead of inventing them. Supply-proxy, not measured demand.
+   */
+  marketSignal?: string;
+  /** Real SKU clusters that ground competitor archetypes (one archetype each). */
+  competitorClusters?: { tier: string; subtype: string; share: number; brands: string[]; medianPrice: number }[];
   /** Provenance/confidence stamped onto the resulting pack. */
   provenance?: Provenance;
+}
+
+/** A fetched source the pack may quote from (subset of the corpus SourceDoc). */
+export interface EvidenceSource {
+  finalUrl: string;
+  sourceClass: string;
+  independent: boolean;
+  rawText: string;
 }
 
 /**
@@ -67,14 +84,18 @@ export async function buildCategoryPack(
             ? `EVIDENCE corpus (real harvested reviews/listings/guides):\n` +
               `"""\n${brief.evidence}\n"""\n\n`
             : "") +
-          `Brief:\n${JSON.stringify({ ...brief, evidence: undefined }, null, 2)}\n\n` +
+          `Brief:\n${JSON.stringify({ ...brief, evidence: undefined, sources: undefined, provenance: undefined }, null, 2)}\n\n` +
           `EVERY need/trigger/rejection is an EvidencedItem: ` +
           `{ "text": <claim in customer language>, "quote": <a VERBATIM phrase copied ` +
           `exactly from a RAW SOURCE that supports it>, "sourceUrl": <that source's URL> }.\n` +
           `Rules for quotes: copy the quote EXACTLY (character-for-character) from the ` +
           `RAW SOURCES section only — NEVER from LENS SUMMARIES, and never paraphrase. ` +
-          `If you cannot find a supporting verbatim quote in a RAW SOURCE, OMIT the item ` +
-          `rather than invent one. An empty list is an honest, valid answer.\n\n` +
+          `For unmetNeeds / wellMetNeeds / purchaseTriggers / rejectionReasons the quote MUST ` +
+          `come from a source tagged (INDEPENDENT) — genuine customer/editorial voice, NOT ` +
+          `brand, marketing, or marketplace-listing copy (those will be rejected). Competitor ` +
+          `evidence may quote any source. ` +
+          `If you cannot find a supporting verbatim quote in an appropriate RAW SOURCE, OMIT the ` +
+          `item rather than invent one. An empty list is an honest, valid answer.\n\n` +
           `Produce a CategoryPack JSON with EXACTLY these keys:\n` +
           `- id (slug), name, currency, geography\n` +
           `- unmetNeeds[] (0-7 EvidencedItems; ONLY genuinely underserved needs a quote supports)\n` +
@@ -83,14 +104,28 @@ export async function buildCategoryPack(
           `- rejectionReasons[] (4-6 EvidencedItems)\n` +
           `- priceBands[] of { label, lowMinor, highMinor } in MINOR units of ${brief.currency} ` +
           `(MINOR = x100; e.g. ${brief.currency} 250 => 25000, ${brief.currency} 800 => 80000)\n` +
-          `- competitorArchetypes[] (3-5) of { codeName, description, pricePositioning, ` +
-          `claims[], strengths[], weaknesses[], evidence[] (EvidencedItems backing the claims) } ` +
-          `— DISGUISED codeNames, no real brand names. ` +
+          (brief.competitorClusters?.length
+            ? `REAL COMPETITOR CLUSTERS — build ONE archetype per cluster below, IN ORDER. The ` +
+              `example brands are for YOUR grounding only; NEVER output a real brand name.\n` +
+              brief.competitorClusters
+                .map((c, i) => `  ${i + 1}. ${c.tier} tier · ${c.subtype} · ~${Math.round(c.share * 100)}% of SKUs · median ${brief.currency}${c.medianPrice} · e.g. ${c.brands.join(", ")}`)
+                .join("\n") +
+              "\n"
+            : "") +
+          `- competitorArchetypes[] (${brief.competitorClusters?.length ? "one per cluster above" : "3-5"}) of ` +
+          `{ codeName, description, pricePositioning, claims[], strengths[], weaknesses[], ` +
+          `evidence[] (EvidencedItems backing the claims) } — DISGUISED codeNames, no real brand names. ` +
           (brief.priceBands?.length
             ? `pricePositioning MUST be one of these tier labels: ${brief.priceBands.map((b) => b.label).join(", ")}.\n`
             : `\n`) +
           `- complianceNotes[] (category-specific legal/claims constraints)\n` +
-          `- buyerSegments[] of { seed, weight } where weights sum to ~1.0\n` +
+          (brief.marketSignal ? `OBSERVED MARKET SIGNAL (real assortment): ${brief.marketSignal}\n` : "") +
+          `- buyerSegments[] (4-7) of { seed, weight, basis }. seed = a NEED / JOB-TO-BE-DONE ` +
+          `segment (e.g. "chronic dry-lips relief seeker", "tint+care beauty buyer", "SPF/outdoor ` +
+          `user", "ingredient-conscious minimalist", "budget marketplace buyer") — NOT a demographic ` +
+          `age band. weight = estimated 0..1 share GROUNDED in the observed market signal above (price ` +
+          `tiers + subtypes) and the needs; these are honest ESTIMATES, do not fabricate precision. ` +
+          `basis = one line stating what the weight is derived from. Weights should sum to ~1.0.\n` +
           `Return ONLY the JSON object.`,
       },
     ],
@@ -102,6 +137,13 @@ export async function buildCategoryPack(
   const id = String(raw.id ?? slug(brief.category));
   const pack = CategoryPackSchema.parse({ ...raw, id });
   pack.buyerSegments = normalizeWeights(pack.buyerSegments);
+  // Attach audit-only real brands per archetype (by cluster order) so each
+  // disguised archetype is falsifiable against actual SKUs. Never reaches the arena.
+  if (brief.competitorClusters?.length) {
+    pack.competitorArchetypes.forEach((a, i) => {
+      a.realExamples = brief.competitorClusters?.[i]?.brands ?? [];
+    });
+  }
   // Prefer data-derived bands from real SKU prices; else guard the LLM guess.
   pack.priceBands =
     brief.priceBands && brief.priceBands.length
@@ -116,12 +158,24 @@ export async function buildCategoryPack(
   //     doesn't support its claim (e.g. a positive line filed as a rejection
   //     reason) fails here. Containment proves the quote is real; entailment
   //     proves it's relevant.
-  const normSource = normalizeForMatch(brief.sourceText ?? "");
+  // Pre-normalize each source once. We match a quote to a SPECIFIC source so we
+  // know its incentive-class: a "customer need" quoted from a brand's own blog is
+  // marketing, not customer voice, and must NOT count.
+  const sources = (brief.sources ?? []).map((s) => ({ ...s, norm: normalizeForMatch(s.rawText) }));
+  const haveSources = sources.length > 0;
   const verifier = new LLMClient();
   const verifierModel = process.env.PB_VERIFY_MODEL ?? loadConfig().simModel;
-  const bind = async (items: EvidencedItem[], kind: string): Promise<EvidencedItem[]> => {
-    const contained = verifyItems(items, normSource); // verified = contained
-    const entailed = brief.sourceText
+
+  // requireIndependent: customer-voice claims (need/trigger/rejection) only count
+  // when quoted from an independent source. Competitor claims may cite any source
+  // (a brand's own marketing IS valid evidence of what that competitor claims).
+  const bind = async (
+    items: EvidencedItem[],
+    kind: string,
+    requireIndependent: boolean,
+  ): Promise<EvidencedItem[]> => {
+    const contained = verifyAgainstSources(items, sources, requireIndependent);
+    const entailed = haveSources
       ? await verifyEntailment(contained, kind, verifier, verifierModel)
       : contained.map(() => false);
     return contained.map((it, i) => ({ ...it, verified: it.verified && entailed[i]! }));
@@ -134,11 +188,16 @@ export async function buildCategoryPack(
     pack.rejectionReasons.length +
     pack.competitorArchetypes.reduce((n, a) => n + a.evidence.length, 0);
 
+  // Demand/supply tier: unmetNeeds + rejectionReasons are DEMAND-pain claims —
+  // they must come from independent customer voice (a brand can't define your
+  // unmet need). wellMetNeeds + purchaseTriggers are supply/observable and may
+  // cite any source, but each item is still TAGGED with its independence so the
+  // pack reports an honest customer-voice ratio rather than shipping empty.
   const [un, wm, pt, rr] = await Promise.all([
-    bind(pack.unmetNeeds, "unmet need"),
-    bind(pack.wellMetNeeds, "well-met need"),
-    bind(pack.purchaseTriggers, "purchase trigger"),
-    bind(pack.rejectionReasons, "rejection reason"),
+    bind(pack.unmetNeeds, "unmet need", true),
+    bind(pack.wellMetNeeds, "well-met need", false),
+    bind(pack.purchaseTriggers, "purchase trigger", false),
+    bind(pack.rejectionReasons, "rejection reason", true),
   ]);
   pack.unmetNeeds = un.filter((i) => i.verified);
   pack.wellMetNeeds = wm.filter((i) => i.verified);
@@ -146,16 +205,19 @@ export async function buildCategoryPack(
   pack.rejectionReasons = rr.filter((i) => i.verified);
   await Promise.all(
     pack.competitorArchetypes.map(async (a) => {
-      a.evidence = (await bind(a.evidence, "competitor claim")).filter((i) => i.verified);
+      a.evidence = (await bind(a.evidence, "competitor claim", false)).filter((i) => i.verified);
     }),
   );
 
-  const attributedItems =
-    pack.unmetNeeds.length +
-    pack.wellMetNeeds.length +
-    pack.purchaseTriggers.length +
-    pack.rejectionReasons.length +
-    pack.competitorArchetypes.reduce((n, a) => n + a.evidence.length, 0);
+  const kept: EvidencedItem[] = [
+    ...pack.unmetNeeds,
+    ...pack.wellMetNeeds,
+    ...pack.purchaseTriggers,
+    ...pack.rejectionReasons,
+    ...pack.competitorArchetypes.flatMap((a) => a.evidence),
+  ];
+  const attributedItems = kept.length;
+  const independentItems = kept.filter((i) => i.independent).length;
   const attributionRate = totalItems ? attributedItems / totalItems : 0;
 
   // Stamp provenance. Confidence = min(coverage grade, attribution grade): a
@@ -163,7 +225,7 @@ export async function buildCategoryPack(
   // high-confidence. (No source text => ungrounded prior pack, low confidence.)
   const base: Provenance =
     brief.provenance ??
-    ({ grounded: false, confidence: "low", lensesPlanned: 0, lensesSucceeded: 0, missingLenses: [], distinctDomains: 0, independentDomains: 0, fetchedSources: 0, sourceClassCounts: {}, citationCountRaw: 0, attributionRate: 0, attributedItems: 0, totalItems: 0, skuCount: 0, providersUsed: [], truncated: false, degraded: !brief.evidence } satisfies Provenance);
+    ({ grounded: false, confidence: "low", lensesPlanned: 0, lensesSucceeded: 0, missingLenses: [], distinctDomains: 0, independentDomains: 0, fetchedSources: 0, sourceClassCounts: {}, citationCountRaw: 0, attributionRate: 0, attributedItems: 0, totalItems: 0, independentItems: 0, skuCount: 0, providersUsed: [], truncated: false, degraded: !brief.evidence } satisfies Provenance);
   const attrConf: Provenance["confidence"] =
     attributedItems === 0 ? "low" : attributionRate >= 0.7 ? "high" : attributionRate >= 0.4 ? "medium" : "low";
   pack.provenance = {
@@ -171,8 +233,9 @@ export async function buildCategoryPack(
     attributionRate: round2(attributionRate),
     attributedItems,
     totalItems,
-    verifierModel: brief.sourceText ? verifierModel : undefined,
-    confidence: brief.sourceText ? minConfidence(base.confidence, attrConf) : base.confidence,
+    independentItems,
+    verifierModel: haveSources ? verifierModel : undefined,
+    confidence: haveSources ? minConfidence(base.confidence, attrConf) : base.confidence,
   };
   return pack;
 }
@@ -236,14 +299,29 @@ function normalizeForMatch(s: string): string {
 }
 
 /**
- * Mark an item verified iff its quote (normalized) literally appears in the raw
- * source text. A short quote (<15 chars) is too weak to count as attribution.
+ * Containment gate. Mark an item verified iff its quote (normalized, >=15 chars)
+ * literally appears in a SPECIFIC fetched source — and, when requireIndependent
+ * is set, that source is independent (community/editorial/regulator). Also
+ * corrects the item's sourceUrl to the actually-matched source, so a claim can't
+ * cite a source it didn't come from.
  */
-function verifyItems(items: EvidencedItem[], normSource: string): EvidencedItem[] {
-  if (!normSource) return items.map((i) => ({ ...i, verified: false }));
+function verifyAgainstSources(
+  items: EvidencedItem[],
+  sources: { finalUrl: string; independent: boolean; norm: string }[],
+  requireIndependent: boolean,
+): EvidencedItem[] {
+  if (!sources.length) return items.map((i) => ({ ...i, verified: false, independent: false }));
   return items.map((i) => {
     const q = normalizeForMatch(i.quote);
-    return { ...i, verified: q.length >= 15 && normSource.includes(q) };
+    if (q.length < 15) return { ...i, verified: false, independent: false };
+    const match = sources.find((s) => s.norm.includes(q));
+    const ok = !!match && (!requireIndependent || match.independent);
+    return {
+      ...i,
+      verified: ok,
+      independent: !!match && match.independent,
+      sourceUrl: match ? match.finalUrl : i.sourceUrl,
+    };
   });
 }
 
@@ -278,8 +356,10 @@ function normalizePriceBands<T extends { lowMinor: number; highMinor: number; la
 
 function normalizeWeights<T extends { weight: number }>(segs: T[]): T[] {
   const total = segs.reduce((a, s) => a + (s.weight || 0), 0);
-  if (total <= 0) return segs.map((s) => ({ ...s, weight: 1 / segs.length }));
-  return segs.map((s) => ({ ...s, weight: s.weight / total }));
+  // Round to whole-percent: these are estimates, so false precision (0.40000001)
+  // would misrepresent the confidence we actually have.
+  if (total <= 0) return segs.map((s) => ({ ...s, weight: Math.round((100 / segs.length)) / 100 }));
+  return segs.map((s) => ({ ...s, weight: Math.round((s.weight / total) * 100) / 100 }));
 }
 
 function slug(s: string): string {

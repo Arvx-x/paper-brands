@@ -168,6 +168,59 @@ async function extractObservations(llm: LLMClient, text: string, currency: strin
   return r.observations ?? [];
 }
 
+export interface CompetitorCluster {
+  tier: string;
+  subtype: string;
+  count: number;
+  share: number; // fraction of SKUs
+  brands: string[]; // real example brands (audit-only)
+  medianPrice: number;
+}
+
+/**
+ * Cluster the REAL harvested SKUs into competitor groups by price-tier x subtype.
+ * Each cluster (with enough members) becomes the grounded scaffolding for one
+ * disguised competitor archetype — so archetypes map to actual market structure
+ * instead of being invented.
+ */
+export function clusterCompetitors(obs: PriceObservation[], buckets: PriceBucket[]): CompetitorCluster[] {
+  if (!obs.length) return [];
+  const tierOf = (price: number): string => {
+    const minor = price * 100;
+    return buckets.find((b) => minor >= b.lowMinor && minor <= b.highMinor)?.label ?? "other";
+  };
+  const groups = new Map<string, PriceObservation[]>();
+  for (const o of obs) {
+    const sub = (o.subtype || "general").toLowerCase().trim() || "general";
+    const key = `${tierOf(o.price)}|${sub}`;
+    const arr = groups.get(key) ?? [];
+    arr.push(o);
+    groups.set(key, arr);
+  }
+  const total = obs.length;
+  const clusters: CompetitorCluster[] = [];
+  for (const [key, members] of groups) {
+    if (members.length < 3) continue; // ignore noise clusters
+    const [tier, subtype] = key.split("|");
+    const freq = new Map<string, number>();
+    for (const m of members) {
+      const b = m.brand.trim();
+      if (b) freq.set(b, (freq.get(b) ?? 0) + 1);
+    }
+    const brands = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map((e) => e[0]);
+    const sorted = members.map((m) => m.price).sort((a, b) => a - b);
+    clusters.push({
+      tier: tier!,
+      subtype: subtype!,
+      count: members.length,
+      share: round2(members.length / total),
+      brands,
+      medianPrice: sorted[Math.floor(sorted.length / 2)]!,
+    });
+  }
+  return clusters.sort((a, b) => b.count - a.count).slice(0, 6);
+}
+
 // ---- extraction / normalization ----
 interface RawObs {
   brand?: unknown;

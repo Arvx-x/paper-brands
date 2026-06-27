@@ -3,6 +3,7 @@ import { ImageClient, readImage, type ImageBlob } from "../llm/imageClient.ts";
 import { brandKitDigest } from "./brandkit.ts";
 import { renderCreative, composeEditPrompt } from "./render.ts";
 import { juryScore } from "./jury.ts";
+import { defaultStructure, type GenStructure } from "./structure.ts";
 import {
   CreativeSpecSchema,
   type BrandKit,
@@ -27,6 +28,7 @@ export interface CreativeOptimizeOptions {
    */
   acceptMargin?: number;
   refImages?: ImageBlob[];
+  structure?: GenStructure;
   outDir: string;
   dry?: boolean;
   llm?: LLMClient;
@@ -72,6 +74,7 @@ export async function optimizeCreative(
   const bestOf = opts.bestOf ?? 2;
   const explorers = opts.variantsPerRound ?? 1;
   const margin = opts.acceptMargin ?? 1.5;
+  const structure = opts.structure ?? defaultStructure();
 
   const renderScore = async (
     spec: CreativeSpec,
@@ -82,11 +85,12 @@ export async function optimizeCreative(
       refImages: o.refImages ?? opts.refImages,
       promptOverride: o.promptOverride,
       nameStem: o.stem,
+      structure,
       dry: opts.dry,
       outDir: `${opts.outDir}/iter`,
       client: ic,
     });
-    const verdict = await juryScore(rendered, opts.kit, { imageClient: ic, llm });
+    const verdict = await juryScore(rendered, opts.kit, { structure, imageClient: ic, llm });
     const blob =
       opts.dry || rendered.imagePath.endsWith(".prompt.txt")
         ? null

@@ -72,6 +72,46 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
+/**
+ * Reddit blocks HTML scraping but serves a public JSON view of any thread
+ * (append `.json`). Community discussion is the scarcest, highest-value
+ * independent source, so we fetch it natively: post title + selftext + the
+ * top-level comment bodies — the real customer language.
+ */
+async function fetchRedditJson(
+  requestedUrl: string,
+  target: string,
+  signal: AbortSignal,
+  maxChars: number,
+): Promise<FetchedPage | null> {
+  try {
+    const u = new URL(target);
+    u.search = "";
+    u.pathname = u.pathname.replace(/\/+$/, "") + ".json";
+    const res = await fetch(u.toString(), {
+      redirect: "follow",
+      signal,
+      headers: { "User-Agent": UA, Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as any;
+    const listings = Array.isArray(data) ? data : [data];
+    const parts: string[] = [];
+    for (const listing of listings) {
+      for (const ch of listing?.data?.children ?? []) {
+        const d = ch?.data ?? {};
+        if (d.title) parts.push(String(d.title));
+        if (d.selftext) parts.push(String(d.selftext));
+        if (d.body) parts.push(String(d.body));
+      }
+    }
+    const text = parts.join(" — ").replace(/\s+/g, " ").trim().slice(0, maxChars);
+    return { requestedUrl, finalUrl: target, domain: "reddit.com", status: res.status, text, ok: text.length > 0 };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchPage(
   url: string,
   opts: { timeoutMs?: number; maxChars?: number } = {},
@@ -82,7 +122,12 @@ export async function fetchPage(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(unwrapRedirect(url), {
+    const target = unwrapRedirect(url);
+    if (/(^|\.)reddit\.com$/.test(domainOf(target))) {
+      const r = await fetchRedditJson(requestedUrl, target, ctrl.signal, maxChars);
+      if (r && r.ok) return r;
+    }
+    const res = await fetch(target, {
       redirect: "follow",
       signal: ctrl.signal,
       headers: {

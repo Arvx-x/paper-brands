@@ -1,14 +1,24 @@
 import { runTournament, runOptimize, formatReport } from "./pipeline/tournament.ts";
 import { buildCategoryPack, savePack } from "./intel/market.ts";
 import { harvest, corpusToEvidence, corpusProvenance, type Corpus } from "./scrape/harvest.ts";
+import { clusterCompetitors } from "./scrape/prices.ts";
 import { loadConfig } from "./config.ts";
 import type { Provenance } from "./categories/types.ts";
 import { runCreativeFactory } from "./creative/pipeline.ts";
 import { buildBrandKit, saveBrandKit, loadBrandKit } from "./creative/brandkit.ts";
 import { researchCreatives } from "./creative/research.ts";
 import { generateAsset } from "./creative/factory.ts";
+import { optimizeStructure } from "./creative/metaOptimize.ts";
+import { loadStructure } from "./creative/structure.ts";
 import { readImage } from "./llm/imageClient.ts";
 import { BrandConceptSchema } from "./brand/types.ts";
+
+/** Load identity/product reference images from a comma-separated --refs path list. */
+async function loadRefs(spec?: string) {
+  const paths = spec?.split(",").filter(Boolean) ?? [];
+  const refs = await Promise.all(paths.map((p) => readImage(p).catch(() => null)));
+  return refs.filter((b): b is NonNullable<typeof b> => b !== null);
+}
 
 function flag(name: string): boolean {
   return process.argv.includes(`--${name}`);
@@ -119,8 +129,10 @@ switch (cmd) {
 
     // Grounding is ON by default (use --no-ground to generate from priors only).
     let evidence: string | undefined;
-    let sourceText: string | undefined;
+    let sources: { finalUrl: string; sourceClass: string; independent: boolean; rawText: string }[] | undefined;
     let priceBands: Corpus["price"]["bands"] | undefined;
+    let marketSignal: string | undefined;
+    let competitorClusters: ReturnType<typeof clusterCompetitors> | undefined;
     let provenance: Provenance | undefined;
     if (!flag("no-ground")) {
       const geo = arg("geo", "India");
@@ -134,13 +146,30 @@ switch (cmd) {
       }
       const ev = corpusToEvidence(corpus);
       evidence = ev.text;
-      sourceText = (corpus.sources ?? []).filter((s) => s.fetched).map((s) => s.rawText).join("\n\n");
+      sources = (corpus.sources ?? [])
+        .filter((s) => s.fetched)
+        .map((s) => ({ finalUrl: s.finalUrl, sourceClass: s.sourceClass, independent: s.independent, rawText: s.rawText }));
       priceBands = corpus.price.bands.length ? corpus.price.bands : undefined;
+      // Real market-structure signal to ground segment weights (supply-proxy).
+      const tierStr = corpus.price.buckets.map((b) => `${b.label} ${Math.round(b.share * 100)}%`).join(", ");
+      const subCounts: Record<string, number> = {};
+      for (const o of corpus.price.observations) {
+        const t = (o.subtype || "").toLowerCase().trim();
+        if (t) subCounts[t] = (subCounts[t] ?? 0) + 1;
+      }
+      const subTotal = Object.values(subCounts).reduce((a, b) => a + b, 0);
+      const subStr = Object.entries(subCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([k, n]) => `${k} ${Math.round((n / subTotal) * 100)}%`)
+        .join(", ");
+      marketSignal = `price tiers: ${tierStr || "n/a"}${subStr ? `; subtypes observed: ${subStr}` : ""}`;
+      competitorClusters = clusterCompetitors(corpus.price.observations, corpus.price.buckets);
       provenance = corpusProvenance(corpus, { truncated: ev.truncated, model: loadConfig().model });
       console.error(
-        `[intel] grounding in ${evidence.length} chars (${sourceText.length} raw quotable) + ${priceBands?.length ?? 0} price bands ` +
+        `[intel] grounding in ${evidence.length} chars + ${sources.length} fetched sources (${sources.filter((s) => s.independent).length} independent) + ${priceBands?.length ?? 0} price bands ` +
           `| confidence=${provenance.confidence}${provenance.degraded ? " (DEGRADED)" : ""} ` +
-          `(${provenance.lensesSucceeded}/${provenance.lensesPlanned} lenses, ${provenance.independentDomains} indep domains, ${provenance.fetchedSources} fetched sources, ${provenance.skuCount} SKUs)`,
+          `(${provenance.lensesSucceeded}/${provenance.lensesPlanned} lenses, ${provenance.independentDomains} indep domains, ${provenance.skuCount} SKUs)`,
       );
     } else {
       console.error(`[intel] ⚠ --no-ground: generating from model priors only (confidence will be 'low').`);
@@ -154,8 +183,10 @@ switch (cmd) {
       priceAmbition: arg("ambition"),
       notes: arg("notes"),
       evidence,
-      sourceText,
+      sources,
       priceBands,
+      marketSignal,
+      competitorClusters,
       provenance,
     });
     const path = await savePack(pack);
@@ -163,7 +194,8 @@ switch (cmd) {
     console.log(
       `Generated CategoryPack '${pack.id}' (${pack.name}) -> ${path}\n` +
         `  confidence=${p?.confidence ?? "low"}${p?.degraded ? " ⚠DEGRADED" : ""} | grounded=${p?.grounded ?? false}\n` +
-        `  attribution=${p ? Math.round((p.attributionRate ?? 0) * 100) : 0}% (${p?.attributedItems ?? 0}/${p?.totalItems ?? 0} claims quote-verified)\n` +
+        `  attribution=${p ? Math.round((p.attributionRate ?? 0) * 100) : 0}% (${p?.attributedItems ?? 0}/${p?.totalItems ?? 0} claims quote-verified) | ` +
+        `customer-voice ${p?.independentItems ?? 0}/${p?.attributedItems ?? 0} from independent sources\n` +
         `  ${pack.competitorArchetypes.length} competitor archetypes, ` +
         `${pack.buyerSegments.length} buyer segments, ` +
         `${pack.unmetNeeds.length} unmet / ${pack.wellMetNeeds.length} well-met needs.\n` +
@@ -181,6 +213,13 @@ switch (cmd) {
   // brief -> spec -> render -> jury -> hill-climb -> library. Renders for real
   // unless --dry (judges the prompt instead, no image credits spent).
   case "creative": {
+    // Use the meta-optimized structure when --use-structure is passed (or a version is given).
+    const sv = arg("structure-version");
+    const structure =
+      flag("use-structure") || sv
+        ? (await loadStructure(sv ? Number(sv) : "active")) ?? undefined
+        : undefined;
+    if (structure) console.error(`[creative] using structure v${structure.version}`);
     const res = await runCreativeFactory({
       categoryId: arg("category"),
       conceptPath: arg("concept"),
@@ -194,6 +233,8 @@ switch (cmd) {
       dry: flag("dry"),
       candidates: Number(arg("candidates", "3")),
       cohortSize: Number(arg("cohort", "20")),
+      geography: arg("geo"),
+      structure,
       outDir: arg("out"),
     });
     console.log(
@@ -263,12 +304,49 @@ switch (cmd) {
       rounds: Number(arg("rounds", "3")),
       identity: !flag("no-identity"),
       dry: flag("dry"),
+      geography: arg("geo"),
       outDir: arg("out"),
     });
     const mean = res.library.length
       ? res.library.reduce((s, i) => s + i.finalScore, 0) / res.library.length
       : 0;
     console.log(mean.toFixed(2));
+    break;
+  }
+
+  // Meta-optimize the GENERATION STRUCTURE itself (autonomous hill-climb).
+  // Renders a small fixed eval set under each candidate structure, scores with
+  // the jury, keeps a version only if it beats the champion by a margin. The
+  // winner is saved to structures/active.json for `creative --use-structure`.
+  case "structure-optimize": {
+    const conceptPath = arg("concept");
+    if (!conceptPath) throw new Error('structure-optimize requires --concept="<path-to-concept.json>"');
+    const concept = BrandConceptSchema.parse(await Bun.file(conceptPath).json());
+    const research = flag("research")
+      ? await researchCreatives(concept, arg("category", concept.heroSku)!)
+      : undefined;
+    const kit = await buildBrandKit(concept, research, undefined, arg("geo"));
+    await saveBrandKit(kit);
+    const refImages = await loadRefs(arg("refs"));
+    const start = arg("from-version") ? await loadStructure(Number(arg("from-version"))) : undefined;
+
+    const res = await optimizeStructure({
+      kit,
+      refImages: refImages.length ? refImages : undefined,
+      evalAssets: arg("assets")?.split(","),
+      rounds: Number(arg("rounds", "3")),
+      variantsPerRound: Number(arg("variants", "2")),
+      startStructure: start ?? undefined,
+      dry: flag("dry"),
+    });
+    console.log(
+      `\nStructure optimization: v${res.champion.version} wins.\n` +
+        `Score: ${res.startScore.toFixed(1)} -> ${res.finalScore.toFixed(1)}\n` +
+        res.history
+          .map((h) => `  round ${h.round}: ${h.championScore.toFixed(1)} vs ${h.challengerScore.toFixed(1)} ${h.accepted ? "ACCEPT" : "keep"} — ${h.changelog}`)
+          .join("\n") +
+        `\nActive structure saved -> structures/active.json (use: bun run creative --use-structure ...)`,
+    );
     break;
   }
 
@@ -281,8 +359,9 @@ switch (cmd) {
         `  bun run winrate     --category=lipcare --candidates=4 --cohort=40\n` +
         `  bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5\n` +
         `  bun run creative    --category=lipcare --assets=ad-square,ad-story --research --rounds=3\n` +
-        `  bun run creative    --concept=out/concept.json --dry   # no image credits\n` +
-        `  bun run creative-gen --brand="<name>" --asset=ad-story --aspect=9:16 --purpose="..."\n\n` +
+        `  bun run creative    --concept=out/concept.json --use-structure --dry\n` +
+        `  bun run creative-gen --brand="<name>" --asset=ad-story --aspect=9:16 --purpose="..."\n` +
+        `  bun run src/cli.ts structure-optimize --concept=out/concept.json --geo=India --rounds=2 --variants=2\n\n` +
         `Overrides (any command): --model=openai:gpt-4o --sim-model=google:gemini-2.5-flash\n` +
         `Creative uses Gemini image models (PB_IMAGE_MODEL / PB_IMAGE_MODEL_PRO). --dry skips renders.`,
     );

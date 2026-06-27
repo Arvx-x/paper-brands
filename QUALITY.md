@@ -129,8 +129,8 @@ For each dimension, define and satisfy: **(T)** truth it approximates · **(A)**
    summaries); every pack claim carries `{verbatimQuote, sourceUrl, sourceClass}` validated by literal
    containment; confidence becomes `f(attribution-rate, independent-source diversity, effective n)` —
    not raw counts; separate missing-data from null. *Precondition for everything below.*
-1. **complianceNotes** — regulatory lens + claim→regime classifier + primary-source citations. Highest
-   stakes (externalized legal liability), currently zero regulatory grounding.
+1. ~~complianceNotes / regulatory~~ — **DE-SCOPED** (owner decision): regulatory hurdles are out of
+   scope for this product. No regulatory lens, regime classifier, or compliance grounding.
 2. **Category / channel / geo boundary integrity** — stratify; flag dominance; geo-fence prices.
    Poisons every other dimension when violated.
 3. **buyerSegment weights** — denominator-or-label; stop silently biasing the arena cohort.

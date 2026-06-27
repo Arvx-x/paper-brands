@@ -4,6 +4,7 @@ import { CreativeCouncil } from "./council.ts";
 import { renderCreative } from "./render.ts";
 import { juryScore } from "./jury.ts";
 import { optimizeCreative } from "./optimize.ts";
+import { defaultStructure, type GenStructure } from "./structure.ts";
 import { CreativeBriefSchema, assetAspect, type BrandKit, type JuryVerdict, type RenderedCreative } from "./types.ts";
 
 export interface GenerateAssetOptions {
@@ -25,6 +26,7 @@ export interface GenerateAssetOptions {
   outDir: string;
   dry?: boolean;
   tier?: "flash" | "pro";
+  structure?: GenStructure;
   llm?: LLMClient;
   imageClient?: ImageClient;
 }
@@ -41,8 +43,9 @@ export async function generateAsset(
   const llm = opts.llm ?? new LLMClient();
   const ic = opts.imageClient ?? new ImageClient();
   const aspect = opts.aspect ?? assetAspect(opts.assetType);
+  const structure = opts.structure ?? defaultStructure();
 
-  const council = new CreativeCouncil(opts.kit, llm);
+  const council = new CreativeCouncil(opts.kit, llm, structure);
   const brief = CreativeBriefSchema.parse({
     id: `${opts.assetType}-ondemand`,
     assetType: opts.assetType,
@@ -61,6 +64,7 @@ export async function generateAsset(
       rounds: opts.rounds ?? 3,
       bestOf: opts.bestOf,
       refImages: opts.refImages,
+      structure,
       outDir: opts.outDir,
       dry: opts.dry,
       llm,
@@ -72,10 +76,11 @@ export async function generateAsset(
   const rendered = await renderCreative(opts.kit, spec, {
     tier: opts.tier ?? "pro",
     refImages: opts.refImages,
+    structure,
     dry: opts.dry,
     outDir: opts.outDir,
     client: ic,
   });
-  const verdict = await juryScore(rendered, opts.kit, { imageClient: ic, llm });
+  const verdict = await juryScore(rendered, opts.kit, { structure, imageClient: ic, llm });
   return { rendered, verdict };
 }

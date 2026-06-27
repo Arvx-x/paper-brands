@@ -301,6 +301,7 @@ export function corpusProvenance(
     attributionRate: 0,
     attributedItems: 0,
     totalItems: 0,
+    independentItems: 0,
     skuCount,
     providersUsed: cov.providersAvailable,
     truncated: opts.truncated ?? false,
@@ -329,14 +330,17 @@ export function corpusToEvidence(
   let used = 0;
   const srcParts: string[] = [];
   for (const s of ordered) {
-    const block = `[${s.id}] (${s.sourceClass} | ${s.domain} | ${s.finalUrl})\n${s.rawText.slice(0, 1100)}`;
+    const tag = s.independent ? "INDEPENDENT" : s.sourceClass;
+    const block = `[${s.id}] (${tag} | ${s.domain} | ${s.finalUrl})\n${s.rawText.slice(0, 1100)}`;
     if (used + block.length > srcBudget) break;
     srcParts.push(block);
     used += block.length;
   }
   if (srcParts.length) {
     parts.push(
-      `# RAW SOURCES — quote VERBATIM from these and cite the URL.\n\n` + srcParts.join("\n\n"),
+      `# RAW SOURCES — quote VERBATIM and cite the URL. Sources tagged (INDEPENDENT) are ` +
+        `genuine customer/editorial voice; use those for needs/triggers/rejections.\n\n` +
+        srcParts.join("\n\n"),
     );
   }
 
