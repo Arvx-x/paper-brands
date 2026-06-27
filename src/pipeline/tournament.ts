@@ -5,6 +5,7 @@ import { buildCohort } from "../personas/cohort.ts";
 import { DeepNegotiationArena } from "../arena/deep.ts";
 import { SingleShotArena } from "../arena/singleShot.ts";
 import { score, type ArenaReport } from "../scoring/score.ts";
+import { mean, stddev } from "../arena/stats.ts";
 import type { BrandConcept } from "../brand/types.ts";
 
 export interface TournamentOptions {
@@ -14,12 +15,34 @@ export interface TournamentOptions {
   outDir?: string;
   deep?: boolean;   // use the deep negotiation arena
   seed?: number;
+  runs?: number;    // replications across seeds for cross-run variance (default 1)
+}
+
+export interface RunStats {
+  runs: number;
+  winRates: number[];
+  meanWinRate: number;
+  stdWinRate: number;
 }
 
 export interface TournamentOutput {
   categoryId: string;
   concepts: BrandConcept[];
   report: ArenaReport;
+  runStats?: RunStats;
+}
+
+/**
+ * Aggregate per-run winner win-rates into a cross-run summary: tournament-level
+ * mean ± 1σ (sample std), the variance the per-run Wilson CI cannot capture.
+ */
+export function aggregateRunStats(winRates: number[]): RunStats {
+  return {
+    runs: winRates.length,
+    winRates,
+    meanWinRate: mean(winRates),
+    stdWinRate: stddev(winRates),
+  };
 }
 
 export async function runTournament(opts: TournamentOptions): Promise<TournamentOutput> {
@@ -35,19 +58,46 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   const cohort = await buildCohort(pack, opts.cohortSize);
   console.error(`      -> ${cohort.length} buyer agents`);
 
-  console.error(`[3/4] Running blind arena (candidates vs disguised competitors)...`);
   const arena = opts.deep ? new DeepNegotiationArena(pack) : new SingleShotArena(pack);
-  const results = await arena.run({
-    candidates: concepts,
-    cohort,
-    pack,
-    opts: { includeCompetitors: true, seed: opts.seed ?? 0 },
-  });
+
+  // One arena+score pass for a given seed. Council/cohort are reused across runs;
+  // only the seed varies (persona traits are seeded per-run), so replications are cheap.
+  const runOnce = async (seed: number): Promise<ArenaReport> => {
+    const results = await arena.run({
+      candidates: concepts,
+      cohort,
+      pack,
+      opts: { includeCompetitors: true, seed },
+    });
+    return score(results, concepts);
+  };
+
+  const baseSeed = opts.seed ?? 0;
+  const runs = opts.runs && opts.runs > 1 ? opts.runs : 1;
+
+  console.error(
+    `[3/4] Running blind arena (candidates vs disguised competitors)` +
+      (runs > 1 ? ` x${runs} replications` : "") + `...`,
+  );
+
+  // Run 1 is always the headline report (back-compat for single-run consumers).
+  const report = await runOnce(baseSeed);
+  const winRateOf = (r: ArenaReport) => r.winner?.winRate ?? r.candidateShareVsField;
+
+  let runStats: RunStats | undefined;
+  if (runs > 1) {
+    const winRates = [winRateOf(report)];
+    for (let i = 1; i < runs; i++) {
+      console.error(`      -> replication ${i + 1}/${runs} (seed ${baseSeed + i})`);
+      const r = await runOnce(baseSeed + i);
+      winRates.push(winRateOf(r));
+    }
+    runStats = aggregateRunStats(winRates);
+  }
 
   console.error(`[4/4] Scoring...`);
-  const report = score(results, concepts);
 
-  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report };
+  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats };
 
   if (opts.outDir) {
     await mkdir(opts.outDir, { recursive: true });
@@ -111,6 +161,14 @@ export function formatReport(out: TournamentOutput): string {
     lines.push(`\nBest candidate: ${report.winner.name} @ ${(report.winner.winRate * 100).toFixed(1)}%`);
     if (report.winner.topObjections.length)
       lines.push(`Top objections: ${report.winner.topObjections.join(" | ")}`);
+  }
+  if (out.runStats) {
+    const s = out.runStats;
+    const perRun = s.winRates.map((w) => `${(w * 100).toFixed(1)}%`).join(", ");
+    lines.push(
+      `Replications: ${s.runs} | mean win-rate ${(s.meanWinRate * 100).toFixed(1)}% ± ` +
+        `${(s.stdWinRate * 100).toFixed(1)}% (1σ) | per-run: [${perRun}]`,
+    );
   }
   return lines.join("\n");
 }

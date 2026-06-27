@@ -3,7 +3,7 @@ import { negotiate } from "./negotiation.ts";
 import type { Grades } from "./engine.ts";
 
 const traits = { basePMax: 10000, skepticism: 0.3, impulsivity: 0.4, priceConsciousness: 0.5, reluctancePrior: "x" };
-const card = { label: "OPTION-A", headline: "h", body: "b", claims: ["c"], format: "f", priceMinor: 8000, pitch: "p" };
+const card = { label: "OPTION-A", headline: "h", body: "b", claims: ["c"], format: "f", priceMinor: 8000 };
 
 const fixedGrader = (g: Partial<Grades>) => async (): Promise<Grades & { spokenObjection: string }> => ({
   traumaResolutionScore: 0, valueScore: 0, pressureScore: 0,

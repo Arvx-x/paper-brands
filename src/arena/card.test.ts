@@ -9,7 +9,6 @@ const card: BlindCard = {
   claims: ["10% niacinamide", "fragrance-free"],
   format: "30ml serum",
   priceMinor: 69900,
-  pitch: "flat fallback",
 };
 
 test("deep render includes structured sections and price in major units", () => {

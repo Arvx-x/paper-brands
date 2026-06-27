@@ -52,6 +52,7 @@ switch (cmd) {
       outDir: arg("out", "out"),
       deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
       seed: Number(arg("seed", "0")),
+      runs: Number(arg("runs", "1")),
     });
     console.log(formatReport(out));
     break;
@@ -67,6 +68,7 @@ switch (cmd) {
       outDir: arg("out", "out"),
       deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
       seed: Number(arg("seed", "0")),
+      runs: Number(arg("runs", "1")),
     });
     const wr = out.report.winner ? out.report.winner.winRate * 100 : 0;
     console.log(wr.toFixed(2));

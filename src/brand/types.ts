@@ -24,8 +24,9 @@ export type BrandConcept = z.infer<typeof BrandConceptSchema>;
 
 /**
  * Blind card shown to buyer agents. Structured like a product page so the deep
- * arena can render distinct sections; `pitch` is a flat fallback for the
- * single-shot arena. Identity is reduced to a neutral OPTION-x label.
+ * arena can render distinct sections; the single-shot arena renders a flat view
+ * from these fields via renderPitchFlat. Identity is reduced to a neutral
+ * OPTION-x label.
  */
 export interface BlindCard {
   label: string;        // e.g. "OPTION-A"
@@ -34,5 +35,4 @@ export interface BlindCard {
   claims: string[];
   format: string;
   priceMinor: number;
-  pitch: string;        // flat fallback for SingleShotArena
 }

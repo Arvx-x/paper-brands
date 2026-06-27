@@ -11,7 +11,7 @@ export function cardFromConcept(c: BrandConcept, label: string): BlindCard {
   const body = normalizeLen(`${c.positioning}. ${c.productPromise}`, BODY);
   const card: BlindCard = {
     label, headline, body, claims: c.claims.slice(0, 5),
-    format: c.heroSku, priceMinor: c.priceMinor, pitch: "",
+    format: c.heroSku, priceMinor: c.priceMinor,
   };
   return card;
 }
@@ -27,7 +27,7 @@ export function cardFromArchetype(
   const body = normalizeLen(`${a.description} Positioning: ${a.pricePositioning}.`, BODY);
   const card: BlindCard = {
     label, headline, body, claims: a.claims.slice(0, 5),
-    format: "standard", priceMinor, pitch: "",
+    format: "standard", priceMinor,
   };
   return card;
 }
