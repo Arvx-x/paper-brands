@@ -12,11 +12,13 @@ const pack: any = {
 // Fake agent council via a fake LLM is heavy; instead we stub the Council's own methods.
 // We test the orchestration: over-generate -> tag -> select -> re-roll -> report.
 
-function makeCouncil(territoriesByCall: any[][], tagsByCall: any[][]) {
+function makeCouncil(territoriesByCall: any[][], tagsByCall: any[][], avoidCalls: string[][] = []) {
   const c = new Council(pack, { completeJson: async () => ({}) } as any);
   let propCall = 0, tagCall = 0;
-  (c as any).proposeTerritories = async (_perAgent = 2, _avoid: string[] = []) =>
-    territoriesByCall[propCall++] ?? [];
+  (c as any).proposeTerritories = async (_perAgent = 2, _avoid: string[] = []) => {
+    avoidCalls.push([..._avoid]);
+    return territoriesByCall[propCall++] ?? [];
+  };
   // stub specifyBrand to echo a concept from the territory
   (c as any).specifyBrand = async (t: any) => ({
     id: t.name.toLowerCase().replace(/\s+/g, "-"), name: t.name, positioning: t.thesis,
@@ -67,4 +69,33 @@ test("collapsed pool -> triggers ONE re-roll, then flags lowConceptDiversity if 
   expect(diversity.rerolled).toBe(true);
   expect(diversity.distinctWedgeCount).toBe(1);
   expect(diversity.warning).toBe("lowConceptDiversity");
+});
+
+test("collapsed first pool + distinct re-roll -> improves diversity and passes avoid-list", async () => {
+  const first = [
+    { name: "A", thesis: "clean", primarySegment: "sensitive-skin" },
+    { name: "B", thesis: "clean2", primarySegment: "sensitive-skin" },
+    { name: "C", thesis: "clean3", primarySegment: "sensitive-skin" },
+  ];
+  const second = [
+    { name: "D", thesis: "long-lasting in heat", primarySegment: "everyday" },
+    { name: "E", thesis: "premium gifting", primarySegment: "luxury" },
+  ];
+  const firstTags = [
+    { wedge: "clean", segment: "sensitive-skin", tier: "premium" },
+    { wedge: "clean", segment: "sensitive-skin", tier: "premium" },
+    { wedge: "clean", segment: "sensitive-skin", tier: "premium" },
+  ];
+  const secondTags = [
+    { wedge: "longevity", segment: "everyday", tier: "value" },
+    { wedge: "gifting", segment: "luxury", tier: "premium" },
+  ];
+  const avoidCalls: string[][] = [];
+  const c = makeCouncil([first, second], [firstTags, secondTags], avoidCalls);
+  const { concepts, diversity } = await c.generateCandidates(3, 0);
+  expect(diversity.rerolled).toBe(true);
+  expect(diversity.distinctWedgeCount).toBe(3);
+  expect(diversity.warning).toBeUndefined();
+  expect(avoidCalls[1]).toEqual(["clean"]);
+  expect(concepts.map((x) => x.name)).toEqual(expect.arrayContaining(["D", "E"]));
 });
