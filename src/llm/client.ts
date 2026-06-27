@@ -1,5 +1,14 @@
 import { loadConfig, resolveModel, type Config } from "../config.ts";
 
+const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
+export function isRetryableStatus(s: number): boolean { return RETRYABLE.has(s); }
+export function backoffMs(attempt: number): number {
+  return Math.floor(Math.random() * Math.min(16000, 500 * 2 ** attempt));
+}
+const TIMEOUT_MS = Number(process.env.PB_LLM_TIMEOUT_MS ?? "60000");
+const MAX_RETRIES = Number(process.env.PB_LLM_MAX_RETRIES ?? "5");
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -46,19 +55,34 @@ export class LLMClient {
       }
     }
 
-    const res = await fetch(`${conf.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${conf.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
+    let res: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      try {
+        res = await fetch(`${conf.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${conf.apiKey}` },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } catch (e) {
+        if (attempt >= MAX_RETRIES) throw e;
+        await sleep(backoffMs(attempt));
+        continue;
+      } finally {
+        clearTimeout(timer);
+      }
+      if (res.ok) break;
+      if (isRetryableStatus(res.status) && attempt < MAX_RETRIES) {
+        await sleep(backoffMs(attempt));
+        res = null;
+        continue;
+      }
       const text = await res.text();
       throw new Error(`LLM request failed (${res.status}) [${ref}]: ${text.slice(0, 500)}`);
     }
+    if (!res) throw new Error(`LLM request failed after retries [${ref}]`);
 
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
