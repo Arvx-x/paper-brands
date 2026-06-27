@@ -7,6 +7,8 @@ import { SingleShotArena } from "../arena/singleShot.ts";
 import { score, type ArenaReport } from "../scoring/score.ts";
 import { mean, stddev } from "../arena/stats.ts";
 import type { BrandConcept } from "../brand/types.ts";
+import { calibrate } from "../calibration/calibrate.ts";
+import type { CalibrationResult } from "../calibration/types.ts";
 
 export interface TournamentOptions {
   categoryId: string;
@@ -32,6 +34,7 @@ export interface TournamentOutput {
   runStats?: RunStats;
   groundingCoverage?: number;
   cohortDiversity?: number;
+  calibration?: CalibrationResult;
 }
 
 /**
@@ -99,7 +102,10 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
 
   console.error(`[4/4] Scoring...`);
 
-  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity };
+  const winRateForCal = report.winner?.winRate ?? report.candidateShareVsField ?? 0;
+  const calibration = await calibrate(opts.categoryId, winRateForCal);
+
+  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity, calibration };
 
   if (opts.outDir) {
     await mkdir(opts.outDir, { recursive: true });
@@ -157,7 +163,7 @@ export function formatReport(out: TournamentOutput): string {
     );
   }
   lines.push(`\nLeaderboard (win-rate):`);
-  for (const c of report.concepts) {
+  for (const c of report.concepts ?? []) {
     const tag = c.conceptId.startsWith("competitor:") ? "  [competitor]" : "";
     lines.push(
       `  ${(c.winRate * 100).toFixed(1).padStart(5)}%  ` +
@@ -183,6 +189,28 @@ export function formatReport(out: TournamentOutput): string {
     lines.push(`\nBest candidate: ${report.winner.name} @ ${(report.winner.winRate * 100).toFixed(1)}%`);
     if (report.winner.topObjections.length)
       lines.push(`Top objections: ${report.winner.topObjections.join(" | ")}`);
+  }
+  const cal = out.calibration;
+  if (cal) {
+    if (cal.status === "uncalibrated") {
+      lines.push(
+        `\u26a0 UNCALIBRATED \u2014 win-rate is a relative hypothesis, not a demand forecast (${cal.n} real observations).`,
+      );
+    } else {
+      const label = cal.status === "weak" ? "WEAK" : "CALIBRATED";
+      const metric = cal.realMetric ? ` real (${cal.realMetric})` : "";
+      lines.push(
+        `${label} estimate: ${(cal.calibrated * 100).toFixed(1)}%${metric} ` +
+          `\u00b1 ${(((cal.hi - cal.lo) / 2) * 100).toFixed(1)}%  [n=${cal.n}, ${cal.method}, R\u00b2=${(cal.r2 ?? 0).toFixed(2)}` +
+          `${cal.status === "weak" ? " \u2014 directional only" : ""}]`,
+      );
+      lines.push(`  \u251c blind concept appeal: +${(cal.appealContribution * 100).toFixed(1)}%`);
+      lines.push(
+        cal.equityStatus === "learned"
+          ? `  \u2514 brand equity:         +${(cal.equityContribution * 100).toFixed(1)}%  (learned, n=${cal.n})`
+          : `  \u2514 brand equity:         +0.0%  (no equity data yet)`,
+      );
+    }
   }
   if (out.runStats) {
     const s = out.runStats;
