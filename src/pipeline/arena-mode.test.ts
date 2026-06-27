@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { resolveArena, type TournamentOptions } from "./tournament.ts";
+import { resolveArena, formatReport, type TournamentOptions, type TournamentOutput } from "./tournament.ts";
 
 const pack: any = { id: "p", name: "P", priceBands: [], buyerSegments: [], competitorArchetypes: [] };
 
@@ -34,4 +34,28 @@ test("neither set -> default deep", () => {
 test("mode wins over deep when both set", () => {
   const { arenaMode } = resolveArena(pack, opts({ mode: "cheap", deep: true }));
   expect(arenaMode.mode).toBe("cheap");
+});
+
+function baseOut(arenaMode?: TournamentOutput["arenaMode"]): TournamentOutput {
+  return {
+    categoryId: "lipcare-india",
+    concepts: [],
+    report: { totalTrials: 40, concepts: [], candidateShareVsField: 0.5, abstentionRate: 0, errorRate: 0, degraded: false, winner: null } as any,
+    arenaMode,
+  };
+}
+
+test("formatReport renders the arena-mode line for deep", () => {
+  const txt = formatReport(baseOut({ mode: "deep", kind: "deep-negotiation", costClass: "expensive" }));
+  expect(txt).toContain("Arena mode: deep (deep-negotiation, expensive)");
+});
+
+test("formatReport renders the arena-mode line for cheap", () => {
+  const txt = formatReport(baseOut({ mode: "cheap", kind: "single-shot", costClass: "cheap" }));
+  expect(txt).toContain("Arena mode: cheap (single-shot, cheap)");
+});
+
+test("formatReport omits the arena-mode line when absent (non-breaking)", () => {
+  const txt = formatReport(baseOut(undefined));
+  expect(txt).not.toContain("Arena mode:");
 });

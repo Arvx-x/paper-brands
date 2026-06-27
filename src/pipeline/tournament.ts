@@ -175,6 +175,9 @@ export function formatReport(out: TournamentOutput): string {
   const { report } = out;
   const lines: string[] = [];
   lines.push(`\nCategory: ${out.categoryId}  |  trials: ${report.totalTrials}`);
+  if (out.arenaMode) {
+    lines.push(`Arena mode: ${out.arenaMode.mode} (${out.arenaMode.kind}, ${out.arenaMode.costClass})`);
+  }
   lines.push(`Candidate share vs field: ${(report.candidateShareVsField * 100).toFixed(1)}%`);
   lines.push(
     `Abstention: ${(report.abstentionRate * 100).toFixed(1)}%  |  Errors: ${(report.errorRate * 100).toFixed(1)}%` +
