@@ -48,6 +48,7 @@ export interface TournamentOutput {
   cohortDiversity?: number;
   calibration?: CalibrationResult;
   conceptDiversity?: DiversityReport;
+  arenaMode?: ArenaModeInfo;
 }
 
 /**
@@ -86,7 +87,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   const { personas: cohort, groundingCoverage, cohortDiversity } = await buildCohort(pack, opts.cohortSize);
   console.error(`      -> ${cohort.length} buyer agents`);
 
-  const arena = opts.deep ? new DeepNegotiationArena(pack) : new SingleShotArena(pack);
+  const { arena, arenaMode } = resolveArena(pack, opts);
 
   // One arena+score pass for a given seed. Council/cohort are reused across runs;
   // only the seed varies (persona traits are seeded per-run), so replications are cheap.
@@ -128,7 +129,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   const winRateForCal = report.winner?.winRate ?? report.candidateShareVsField ?? 0;
   const calibration = await calibrate(opts.categoryId, winRateForCal);
 
-  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity, calibration, conceptDiversity };
+  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity, calibration, conceptDiversity, arenaMode };
 
   if (opts.outDir) {
     await mkdir(opts.outDir, { recursive: true });
