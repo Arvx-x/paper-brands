@@ -30,3 +30,19 @@ export interface BuyerArena {
   readonly costClass: "cheap" | "expensive";
   run(input: ArenaInput): Promise<MatchResult[]>;
 }
+
+export interface CalibrationPair {
+  auditId: string;
+  realName: string;
+  arenaWinRate: number;
+  tractionScore: number;
+  picks: number;
+  trials: number;
+}
+
+export interface CorrelationCheck {
+  n: number;
+  spearmanRho: number;
+  verdict: "plausible" | "weak" | "none-or-negative" | "insufficient-n";
+  note: string;
+}
