@@ -9,6 +9,7 @@ import { mean, stddev } from "../arena/stats.ts";
 import type { BrandConcept } from "../brand/types.ts";
 import { calibrate } from "../calibration/calibrate.ts";
 import type { CalibrationResult } from "../calibration/types.ts";
+import type { DiversityReport } from "../council/diversity.ts";
 
 export interface TournamentOptions {
   categoryId: string;
@@ -35,6 +36,7 @@ export interface TournamentOutput {
   groundingCoverage?: number;
   cohortDiversity?: number;
   calibration?: CalibrationResult;
+  conceptDiversity?: DiversityReport;
 }
 
 /**
@@ -55,7 +57,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
 
   console.error(`[1/4] Council generating ${opts.candidates} candidate brands...`);
   const council = new Council(pack);
-  const concepts = await council.generateCandidates(opts.candidates);
+  const { concepts, diversity: conceptDiversity } = await council.generateCandidates(opts.candidates, opts.seed);
   if (concepts.length === 0) throw new Error("Council produced no valid concepts.");
   console.error(`      -> ${concepts.map((c) => c.name).join(", ")}`);
 
@@ -105,7 +107,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   const winRateForCal = report.winner?.winRate ?? report.candidateShareVsField ?? 0;
   const calibration = await calibrate(opts.categoryId, winRateForCal);
 
-  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity, calibration };
+  const out: TournamentOutput = { categoryId: opts.categoryId, concepts, report, runStats, groundingCoverage, cohortDiversity, calibration, conceptDiversity };
 
   if (opts.outDir) {
     await mkdir(opts.outDir, { recursive: true });
@@ -209,6 +211,21 @@ export function formatReport(out: TournamentOutput): string {
         cal.equityStatus === "learned"
           ? `  \u2514 brand equity:         +${(cal.equityContribution * 100).toFixed(1)}%  (learned, n=${cal.n})`
           : `  \u2514 brand equity:         +0.0%  (no equity data yet)`,
+      );
+    }
+  }
+  const div = out.conceptDiversity;
+  if (div) {
+    if (div.warning === "lowConceptDiversity") {
+      lines.push(
+        `\u26a0 LOW CONCEPT DIVERSITY \u2014 slate spans only ${div.distinctWedgeCount} wedge` +
+          `${div.distinctWedgeCount === 1 ? "" : "s"} [${div.spannedWedges.join(", ")}]` +
+          `${div.rerolled ? " (re-rolled once)" : ""}. Win-rates compare near-duplicates.`,
+      );
+    } else {
+      lines.push(
+        `Concept diversity: ${div.distinctWedgeCount} of ${div.requested} distinct wedges ` +
+          `[${div.spannedWedges.join(", ")}]${div.rerolled ? " (re-rolled once)" : ""}`,
       );
     }
   }
