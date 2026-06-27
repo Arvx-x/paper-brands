@@ -113,6 +113,24 @@ test("tagWedges fills sentinel for any territory missing from the response", asy
   expect(out[1]!.fingerprint.wedge).toContain("untagged");
 });
 
+test("tagWedges fails clean when tags is not an array", async () => {
+  const llm = { completeJson: async () => ({ tags: {} }) } as any;
+  const out = await tagWedges(terrs, ["value", "premium"], llm);
+  expect(out).toHaveLength(2);
+  expect(out[0]!.fingerprint.wedge).toBe("untagged-0");
+  expect(out[1]!.fingerprint.wedge).toBe("untagged-1");
+});
+
+test("tagWedges sentinels malformed wedge/segment that normalize empty", async () => {
+  const llm = { completeJson: async () => ({ tags: [
+    { territoryIndex: 0, wedge: "!!!", segment: "...", tier: "value" },
+    { territoryIndex: 1, wedge: "longevity", segment: "everyday", tier: "value" },
+  ] }) } as any;
+  const out = await tagWedges(terrs, ["value", "premium"], llm);
+  expect(out[0]!.fingerprint.wedge).toBe("untagged-0");
+  expect(out[1]!.fingerprint.wedge).toBe("longevity");
+});
+
 test("tagWedges coerces a tier outside the pack bands to 'unknown'", async () => {
   const llm = { completeJson: async () => ({ tags: [
     { territoryIndex: 0, wedge: "clean", segment: "sensitive-skin", tier: "ultra-premium" },

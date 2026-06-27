@@ -84,13 +84,15 @@ export async function tagWedges(
   }
 
   const byIndex = new Map<number, { wedge?: string; segment?: string; tier?: string }>();
-  for (const t of raw?.tags ?? []) {
+  for (const t of Array.isArray(raw?.tags) ? raw.tags : []) {
     if (typeof t?.territoryIndex === "number") byIndex.set(t.territoryIndex, t);
   }
 
   return territories.map((terr, i) => {
     const hit = byIndex.get(i);
-    if (!hit || !hit.wedge || !hit.segment) {
+    const wedge = normSlug(hit?.wedge);
+    const segment = normSlug(hit?.segment);
+    if (!hit || !wedge || !segment) {
       return { territoryIndex: i, territoryName: terr.name, fingerprint: sentinel(i) };
     }
     const tier = normSlug(hit.tier);
@@ -98,8 +100,8 @@ export async function tagWedges(
       territoryIndex: i,
       territoryName: terr.name,
       fingerprint: {
-        wedge: normSlug(hit.wedge),
-        segment: normSlug(hit.segment),
+        wedge,
+        segment,
         tier: bandSet.has(tier) ? tier : "unknown",
       },
     };
