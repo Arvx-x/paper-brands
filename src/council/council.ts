@@ -2,6 +2,7 @@ import { Agent, COUNCIL_SPECS } from "../agents/agent.ts";
 import { LLMClient } from "../llm/client.ts";
 import type { CategoryPack } from "../categories/types.ts";
 import { BrandConceptSchema, type BrandConcept } from "../brand/types.ts";
+import { tagWedges, selectDiverse, type WedgeTag, type DiversityReport, type TerritoryLike } from "./diversity.ts";
 import { z } from "zod";
 
 const TerritoriesSchema = z.object({
@@ -22,6 +23,9 @@ const TerritoriesSchema = z.object({
  */
 export class Council {
   private agents: Agent[];
+  /** Test seam: override the wedge tagger. Defaults to the real batched LLM tagger. */
+  private __tagFn?: (terrs: TerritoryLike[]) => Promise<WedgeTag[]>;
+
   constructor(private pack: CategoryPack, private llm = new LLMClient()) {
     this.agents = COUNCIL_SPECS.map((s) => new Agent(s, llm));
   }
@@ -45,7 +49,7 @@ export class Council {
   }
 
   /** Each specialist proposes territories from its own lens, then we merge. */
-  async proposeTerritories(perAgent = 2): Promise<
+  async proposeTerritories(perAgent = 2, avoid: string[] = []): Promise<
     z.infer<typeof TerritoriesSchema>["territories"]
   > {
     const brief = this.packBrief();
@@ -57,6 +61,10 @@ export class Council {
               `Propose ${perAgent} distinct brand territories (white-space bets) ` +
               `from your specialist lens. Each must attack a named unmet need ` +
               `and avoid an existing competitor archetype's strength.\n` +
+              (avoid.length
+                ? `These positioning wedges are already saturated — propose territories that ` +
+                  `attack DIFFERENT wedges, NOT these: ${avoid.join(", ")}.\n`
+                : "") +
               `Schema: { "territories": [{ "name", "thesis", "whyNow", "primarySegment" }] }`,
           )
           .then((r) => TerritoriesSchema.parse(r).territories)
@@ -87,19 +95,68 @@ export class Council {
     return BrandConceptSchema.parse(withId);
   }
 
-  /** Generate N candidate brands end-to-end. */
-  async generateCandidates(count: number): Promise<BrandConcept[]> {
-    const territories = await this.proposeTerritories();
-    const picked = territories.slice(0, count);
-    const concepts = await Promise.all(
-      picked.map((t) =>
-        this.specifyBrand(t).catch((e) => {
-          console.warn(`[council] failed to specify '${t.name}': ${e.message}`);
-          return null;
-        }),
-      ),
-    );
-    return concepts.filter((c): c is BrandConcept => c !== null);
+  /** Generate N candidate brands end-to-end, with diversity selection + one bounded re-roll. */
+  async generateCandidates(
+    count: number,
+    seed = 0,
+  ): Promise<{ concepts: BrandConcept[]; diversity: DiversityReport }> {
+    const bandLabels = (this.pack.priceBands ?? []).map((b) => b.label);
+    const tag = (terrs: TerritoryLike[]) =>
+      (this.__tagFn ? this.__tagFn(terrs) : tagWedges(terrs, bandLabels, this.llm));
+
+    // 1. over-generate + tag + select
+    let pool = await this.proposeTerritories(2);
+    let tags = await tag(pool);
+    let sel = selectDiverse(tags, count, seed);
+    let rerolled = false;
+
+    // 2. one bounded re-roll if the slate collapses
+    if (sel.distinctWedgeCount < count) {
+      try {
+        const pool2 = await this.proposeTerritories(2, sel.spannedWedges);
+        const tags2 = (await tag(pool2)).map((t) => ({ ...t, territoryIndex: t.territoryIndex + pool.length }));
+        const combinedPool = [...pool, ...pool2];
+        const combinedTags = [...tags, ...tags2];
+        const sel2 = selectDiverse(combinedTags, count, seed);
+        pool = combinedPool;
+        tags = combinedTags;
+        sel = sel2;
+        rerolled = true;
+      } catch (e) {
+        console.warn(`[council] re-roll failed: ${(e as Error).message}`);
+      }
+    }
+
+    // 3. honest flag
+    const warning = sel.distinctWedgeCount < count ? ("lowConceptDiversity" as const) : undefined;
+
+    // 4. specify the selected territories (unchanged).
+    // `territoryIndex` is positionally aligned to `pool`: the first pool's tags use 0..pool0-1,
+    // and re-roll tags were re-based by `+ pool0.length` while `pool` was concatenated in the
+    // same order — so `pool[idx]` is the correct territory by construction.
+    const selectedTerritories = sel.selectedIndices
+      .map((idx) => pool[idx])
+      .filter((t): t is NonNullable<(typeof pool)[number]> => Boolean(t));
+    const concepts = (
+      await Promise.all(
+        selectedTerritories.map((t) =>
+          this.specifyBrand(t).catch((e) => {
+            console.warn(`[council] failed to specify '${t.name}': ${e.message}`);
+            return null;
+          }),
+        ),
+      )
+    ).filter((c): c is BrandConcept => c !== null);
+
+    const diversity: DiversityReport = {
+      requested: count,
+      distinctWedgeCount: sel.distinctWedgeCount,
+      spannedWedges: sel.spannedWedges,
+      poolSize: pool.length,
+      rerolled,
+      warning,
+    };
+    return { concepts, diversity };
   }
 }
 
