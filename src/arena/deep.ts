@@ -80,13 +80,12 @@ export class DeepNegotiationArena implements BuyerArena {
       // Negotiate each option independently (over the SHUFFLED slate).
       const perOptionWtpMinor: Record<string, number> = {};
       let best: { entry: typeof entries[number]; conviction: number; wtp: number; turns: number; objection: string } | null = null;
-      let anyErrored = false;
       let erroredCount = 0;
 
       for (const e of slate) {
         const o = await this.negotiateFn(traits, e.card, pack.currency, `${seed}::${persona.id}`);
         perOptionWtpMinor[e.conceptId] = o.finalWtp;
-        if (o.errored) { anyErrored = true; erroredCount++; continue; }
+        if (o.errored) { erroredCount++; continue; }
         const affordable = o.affordable;
         if (!affordable) continue;
         if (!best ||
