@@ -37,7 +37,10 @@ export function cardFromBenchmark(b: BenchmarkBrand, label: string): BlindCard {
   // realName/tractionScore/reviewCount/rating/retailer are AUDIT-ONLY and must
   // never reach the buyer — the blind-control guarantee of the methodology.
   const headline = normalizeLen(b.claims[0] ?? "Established option", HEAD);
-  const body = normalizeLen(b.claims.join(". "), BODY);
+  // Body = remaining claims (skip the one used as headline), cleanly joined, no double punctuation.
+  const rest = b.claims.slice(1);
+  const bodySource = (rest.length ? rest : b.claims).join("; ").replace(/\.\s*;/g, ";").replace(/\.\.+/g, ".");
+  const body = normalizeLen(bodySource || "A well-reviewed option in this category.", BODY);
   const card: BlindCard = {
     label, headline, body, claims: b.claims.slice(0, 5),
     format: b.format, priceMinor: b.priceMinor,
