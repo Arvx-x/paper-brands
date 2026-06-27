@@ -1,7 +1,6 @@
-import type { EquityComponents } from "./types.ts";
+import type { EquityComponents, CalibrationResult } from "./types.ts";
 import { CalibrationStore } from "./store.ts";
 import { fitCalibration } from "./model.ts";
-import type { CalibrationResult } from "./types.ts";
 
 /** Equal-weight mean of PRESENT equity components (missing omitted, not zero-filled). */
 export function composeEquity(components?: EquityComponents): number | undefined {
