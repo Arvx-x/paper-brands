@@ -55,7 +55,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   console.error(`      -> ${concepts.map((c) => c.name).join(", ")}`);
 
   console.error(`[2/4] Building representative cohort of ${opts.cohortSize}...`);
-  const cohort = await buildCohort(pack, opts.cohortSize);
+  const { personas: cohort } = await buildCohort(pack, opts.cohortSize);
   console.error(`      -> ${cohort.length} buyer agents`);
 
   const arena = opts.deep ? new DeepNegotiationArena(pack) : new SingleShotArena(pack);
@@ -133,7 +133,7 @@ export async function runOptimize(opts: OptimizeRunOptions): Promise<OptimizeRes
 
   const { buildCohort } = await import("../personas/cohort.ts");
   console.error(`[opt] building fixed evaluation cohort (${opts.cohortSize})...`);
-  const cohort = await buildCohort(pack, opts.cohortSize);
+  const { personas: cohort } = await buildCohort(pack, opts.cohortSize);
 
   console.error(`[opt] hill-climbing over ${opts.rounds} rounds...`);
   return optimize({ pack, champion, cohort, rounds: opts.rounds, outDir: opts.outDir });
