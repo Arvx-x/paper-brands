@@ -46,17 +46,21 @@ export async function runLaunchpages(
 
   const builtAt = new Date().toISOString();
   const experimentId = opts.experimentId ?? builtAt;
-  const rounds = opts.rounds ?? 2;
-  const bestOf = opts.bestOf ?? 2;
+  const rounds = (opts.rounds && Number.isFinite(opts.rounds) ? opts.rounds : 0) || 2;
+  const bestOf = (opts.bestOf && Number.isFinite(opts.bestOf) ? opts.bestOf : 0) || 2;
   const currency = opts.currency ?? "INR";
 
   const built: BuiltPage[] = [];
   const skipped: string[] = [];
   const failed: { conceptId: string; reason: string }[] = [];
+  const usedSlugs = new Set<string>();
 
   for (const fin of finalists) {
     const concept = fin.concept;
-    const slug = slugify(concept.id || concept.name);
+    let slug = slugify(concept.id || concept.name) || "concept";
+    const base = slug; let n = 2;
+    while (usedSlugs.has(slug)) slug = `${base}-${n++}`;
+    usedSlugs.add(slug);
     const bundleDir = `${outDir}/${slug}`;
     if (await Bun.file(`${bundleDir}/index.html`).exists()) {
       skipped.push(concept.id);
@@ -98,7 +102,7 @@ export async function runLaunchpages(
     unit: "concept",
     concepts: built.map((b) => ({
       conceptId: b.conceptId, name: b.name, syntheticScore: b.syntheticScore,
-      slug: b.slug, pagePath: `${b.slug}/index.html`,
+      slug: b.slug, pagePath: `${b.slug}/index.html`, // bundle layout: <slug>/index.html (not flat pages/<slug>.html)
     })),
   };
   const manifestPath = `${outDir}/experiment.json`;
