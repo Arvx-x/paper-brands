@@ -28,6 +28,10 @@ const num = (s: string): number | undefined => {
 const truthy = (s: string): boolean => /^(true|yes|1|y)$/i.test(s.trim());
 const splitList = (s: string): string[] => s.split(";").map((x) => x.trim()).filter(Boolean);
 
+/** Sentinel highMinor for open-ended bands (e.g. "premium:400+"). Represents
+ *  ~99,999 in the category's currency major units — effectively unlimited. */
+const OPEN_BAND_HIGH_MINOR = 9_999_900;
+
 /** "value:0-150, core:150-400, premium:400+" -> bands in MINOR units (x100). */
 function parsePriceBands(s: string): UserOverrides["priceBands"] {
   const bands = s.split(",").map((seg) => seg.trim()).filter(Boolean).map((seg) => {
@@ -35,9 +39,14 @@ function parsePriceBands(s: string): UserOverrides["priceBands"] {
     if (!label || !range) return undefined;
     const m = range.replace(/\+$/, "-").split("-").map((x) => x.trim());
     const low = Number(m[0]);
-    const high = m[1] === "" || m[1] === undefined ? low * 10 : Number(m[1]);
-    if (!Number.isFinite(low) || !Number.isFinite(high)) return undefined;
-    return { label, lowMinor: Math.round(low * 100), highMinor: Math.round(high * 100) };
+    const isOpen = m[1] === "" || m[1] === undefined;
+    const high = isOpen ? undefined : Number(m[1]);
+    if (!Number.isFinite(low) || (!isOpen && !Number.isFinite(high!))) return undefined;
+    return {
+      label,
+      lowMinor: Math.round(low * 100),
+      highMinor: isOpen ? OPEN_BAND_HIGH_MINOR : Math.round(high! * 100),
+    };
   }).filter((b): b is NonNullable<typeof b> => !!b);
   return bands.length ? bands : undefined;
 }

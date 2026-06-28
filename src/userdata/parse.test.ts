@@ -70,3 +70,14 @@ test("empty workbook returns empty intel + a warning, never throws", () => {
 test("non-workbook buffer throws", () => {
   expect(() => parseWorkbook(new TextEncoder().encode("not a workbook").buffer)).toThrow();
 });
+
+test("Overrides priceBands: open-ended band (400+) uses defined sentinel highMinor", () => {
+  const buf = makeBook({
+    Overrides: [["field", "value"], ["priceBands", "value:0-150, premium:400+"]],
+  });
+  const { intel } = parseWorkbook(buf);
+  expect(intel.overrides.priceBands).toHaveLength(2);
+  const premium = intel.overrides.priceBands!.find((b) => b.label === "premium")!;
+  expect(premium.lowMinor).toBe(40000); // 400 * 100
+  expect(premium.highMinor).toBe(9_999_900); // the sentinel
+});
