@@ -86,10 +86,10 @@ export function parseWorkbook(buf: ArrayBuffer | Uint8Array): { intel: UserIntel
   readSheet(wb, "SKUs").forEach((r, i) => {
     if (!r.brand && !r.product && !r.price) return;
     const parsed = UserSkuSchema.safeParse({
-      brand: r.brand, product: r.product, price: num(r.price),
-      mrp: num(r.mrp), packSize: r.packsize || undefined, unitQty: num(r.unitqty),
-      subtype: r.subtype || undefined, reviewCount: num(r.reviewcount), rating: num(r.rating),
-      tier: r.tier || undefined, unitsSold: num(r.unitssold), marginPct: num(r.marginpct),
+      brand: r.brand ?? "", product: r.product ?? "", price: num(r.price ?? ""),
+      mrp: num(r.mrp ?? ""), packSize: r.packsize || undefined, unitQty: num(r.unitqty ?? ""),
+      subtype: r.subtype || undefined, reviewCount: num(r.reviewcount ?? ""), rating: num(r.rating ?? ""),
+      tier: r.tier || undefined, unitsSold: num(r.unitssold ?? ""), marginPct: num(r.marginpct ?? ""),
     });
     if (parsed.success) skus.push(parsed.data);
     else warnings.push(`SKUs row ${i + 2} skipped: ${parsed.error.issues[0]?.message ?? "invalid"}`);
