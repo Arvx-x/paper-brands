@@ -23,7 +23,7 @@ test("persona-decision tallies by pickedLabel, counts abstain separately, feed n
   ]);
   expect(s.decided).toBe(3);
   expect(s.abstained).toBe(1);
-  expect(s.tally[0]).toEqual({ conceptId: "OPTION-A", name: "OPTION-A", votes: 2 });
+  expect(s.tally[0]).toEqual({ label: "OPTION-A", votes: 2 });
   expect(s.tally[1]!.votes).toBe(1);
   expect(s.feed[0]!.personaId).toBe("p4"); // newest first
 });

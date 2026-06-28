@@ -1,6 +1,6 @@
 import type { PipelineEvent, Stage } from "./events.ts";
 
-export interface BrandVote { conceptId: string; name: string; votes: number; }
+export interface BrandVote { label: string; votes: number; }  // keyed on blind pickedLabel (e.g. OPTION-A), not a conceptId
 export interface DecisionFeedItem {
   personaId: string; segment: string; pickedLabel: string; pickedConceptId: string;
   reason: string; topObjection: string; confidence?: number; abstained?: boolean; errored?: boolean;
@@ -60,8 +60,8 @@ export function reduce(state: ViewState, e: PipelineEvent): ViewState {
         confidence: e.confidence, abstained: e.abstained, errored: e.errored }, ...state.feed].slice(0, FEED_CAP);
       if (e.abstained || e.errored) return { ...state, abstained: state.abstained + 1, feed };
       const tally = state.tally.map((t) => ({ ...t }));
-      const hit = tally.find((t) => t.conceptId === e.pickedLabel);
-      if (hit) hit.votes += 1; else tally.push({ conceptId: e.pickedLabel, name: e.pickedLabel, votes: 1 });
+      const hit = tally.find((t) => t.label === e.pickedLabel);
+      if (hit) hit.votes += 1; else tally.push({ label: e.pickedLabel, votes: 1 });
       tally.sort((a, b) => b.votes - a.votes);
       return { ...state, decided: state.decided + 1, tally, feed };
     }

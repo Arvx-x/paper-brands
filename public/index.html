@@ -60,7 +60,7 @@ function render(s) {
 function arenaHtml(s) {
   const total = s.decided + s.abstained;
   const max = Math.max(1, ...s.tally.map((t) => t.votes));
-  const bars = s.tally.map((t) => `<div class="barrow"><div class="h"><span>${esc(t.name)}</span><span>${t.votes}</span></div><div class="track"><div class="fill" style="width:${(t.votes / max) * 100}%"></div></div></div>`).join("") || `<div class="muted">waiting for decisions…</div>`;
+  const bars = s.tally.map((t) => `<div class="barrow"><div class="h"><span>${esc(t.label)}</span><span>${t.votes}</span></div><div class="track"><div class="fill" style="width:${(t.votes / max) * 100}%"></div></div></div>`).join("") || `<div class="muted">waiting for decisions…</div>`;
   const feed = s.feed.map((f) => f.abstained || f.errored
     ? `<div class="fitem ab"><b>${esc(f.personaId)}</b> ${esc(f.segment)} → <span class="muted">${f.errored ? "errored" : "abstained"}</span></div>`
     : `<div class="fitem"><b>${esc(f.personaId)}</b> ${esc(f.segment)} → <b style="color:var(--accent)">${esc(f.pickedLabel)}</b>${f.confidence != null ? " · conv " + f.confidence.toFixed(2) : ""}<br><span class="r">"${esc(f.reason)}"${f.topObjection ? " · obj: " + esc(f.topObjection) : ""}</span></div>`).join("");
@@ -81,7 +81,7 @@ function creativeHtml(s) {
 
 function pagesHtml(s) {
   if (!s.pages.length) return `<div class="panel muted">Landing pages will appear here when ready…</div>`;
-  return `<div class="pages">${s.pages.map((p) => `<div class="pcard"><iframe src="${esc(p.url)}" loading="lazy"></iframe><div class="b"><b>${esc(p.name)}</b><div class="muted" style="font-size:12px">${p.winRate != null ? "win " + (p.winRate * 100).toFixed(0) + "%" : ""}${p.moatOverall != null ? " · moat " + p.moatOverall.toFixed(2) : ""}</div><a href="${esc(p.url)}" target="_blank">Open page ↗</a></div></div>`).join("")}</div>`;
+  return `<div class="pages">${s.pages.map((p) => `<div class="pcard"><iframe src="${esc(p.url)}" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe><div class="b"><b>${esc(p.name)}</b><div class="muted" style="font-size:12px">${p.winRate != null ? "win " + (p.winRate * 100).toFixed(0) + "%" : ""}${p.moatOverall != null ? " · moat " + p.moatOverall.toFixed(2) : ""}</div><a href="${esc(p.url)}" target="_blank">Open page ↗</a></div></div>`).join("")}</div>`;
 }
 
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => { state = { ...state, activeTab: t.dataset.tab }; render(state); };
