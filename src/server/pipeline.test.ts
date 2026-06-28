@@ -95,6 +95,7 @@ test("emits intel-userdata with provenance counts when userIntel present", async
   expect(ud.userVoices).toBe(1);
   expect(ud.userSkus).toBe(1);
   expect(ud.overridesApplied).toEqual(["currency"]);
+  expect(ud.skuConflicts).toBe(0); // no harvested SKUs to conflict with in this test
 });
 
 test("does NOT emit intel-userdata when no userIntel", async () => {

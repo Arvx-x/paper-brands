@@ -63,6 +63,7 @@ export async function runFoundryPipeline(
       onEvent as any,
     );
     // Apply hard overrides AFTER build; priceBands override wins over recomputed bands.
+    // applied: field names actually replaced by applyOverrides; [] when no userIntel (guarded below).
     const { pack, applied } = userIntel
       ? applyOverrides(builtPack, userIntel.overrides)
       : { pack: builtPack, applied: [] as string[] };
