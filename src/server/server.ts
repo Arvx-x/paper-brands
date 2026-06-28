@@ -75,7 +75,11 @@ export function makeHandler(deps: ServerDeps = {}) {
             close: () => { try { controller.close(); } catch { /* */ } },
           };
           broadcaster.subscribe(w);
-          req.signal.addEventListener("abort", () => broadcaster.unsubscribe(w));
+          // Keep-alive ping every 5s so the connection survives long LLM gaps.
+          const ping = setInterval(() => {
+            try { controller.enqueue(enc.encode(": ping\n\n")); } catch { clearInterval(ping); }
+          }, 5000);
+          req.signal.addEventListener("abort", () => { clearInterval(ping); broadcaster.unsubscribe(w); });
         },
       });
       return new Response(stream, {
@@ -104,7 +108,9 @@ export function makeHandler(deps: ServerDeps = {}) {
 
 export function startServer(port = 4317, deps: ServerDeps = {}): { port: number; stop: () => void } {
   const handler = makeHandler(deps);
-  const server = Bun.serve({ port, fetch: handler });
+  // idleTimeout: 0 disables Bun's 10s idle kill so SSE connections stay alive
+  // during slow LLM calls between events.
+  const server = Bun.serve({ port, fetch: handler, idleTimeout: 0 });
   console.error(`[server] playground on http://localhost:${server.port}`);
   return { port: server.port ?? port, stop: () => server.stop(true) };
 }
