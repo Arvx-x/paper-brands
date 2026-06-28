@@ -2,6 +2,7 @@ import type { BrandConcept } from "../brand/types.ts";
 import type { MoatScore } from "../moat/types.ts";
 import type { TournamentOutput } from "./tournament.ts";
 import { runTournament } from "./tournament.ts";
+import type { PipelineOnEvent } from "../server/events.ts";
 
 export interface Finalist {
   rank: number;
@@ -31,6 +32,7 @@ export interface FoundryOptions {
   cohortSize?: number;
   seed?: number;
   outDir?: string;
+  onEvent?: PipelineOnEvent;
 }
 
 export interface FoundryDeps {
@@ -102,8 +104,17 @@ export async function runFoundry(opts: FoundryOptions, deps: FoundryDeps = {}): 
     moat: true,
     seed: opts.seed,
     outDir,
+    onEvent: opts.onEvent,
   });
   const artifact = selectFinalists(t, opts.finalists ?? 3);
   await Bun.write(`${outDir}/finalists.json`, JSON.stringify(artifact, null, 2));
+  opts.onEvent?.({ type: "stage", stage: "finalists", status: "done" });
+  for (const f of artifact.finalists) {
+    opts.onEvent?.({
+      type: "finalist-selected", rank: f.rank, conceptId: f.concept.id, name: f.concept.name,
+      winRate: f.winRate, winRateCiLow: f.winRateCiLow, winRateCiHigh: f.winRateCiHigh,
+      moatOverall: f.moat?.overall,
+    });
+  }
   return artifact;
 }

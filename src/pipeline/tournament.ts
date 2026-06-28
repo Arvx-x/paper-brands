@@ -15,6 +15,7 @@ import type { CategoryPack } from "../categories/types.ts";
 import { scoreMoat } from "../moat/rubric.ts";
 import type { MoatReport } from "../moat/types.ts";
 import { LLMClient } from "../llm/client.ts";
+import type { PipelineOnEvent } from "../server/events.ts";
 
 export type ArenaMode = "cheap" | "deep";
 
@@ -34,6 +35,7 @@ export interface TournamentOptions {
   moat?: boolean;
   seed?: number;
   runs?: number;    // replications across seeds for cross-run variance (default 1)
+  onEvent?: PipelineOnEvent;
 }
 
 export interface RunStats {
@@ -87,10 +89,13 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   const { concepts, diversity: conceptDiversity } = await council.generateCandidates(opts.candidates, opts.seed);
   if (concepts.length === 0) throw new Error("Council produced no valid concepts.");
   console.error(`      -> ${concepts.map((c) => c.name).join(", ")}`);
+  opts.onEvent?.({ type: "stage", stage: "council", status: "done" });
+  for (const c of concepts) opts.onEvent?.({ type: "brand-spawned", conceptId: c.id, name: c.name, positioning: c.positioning });
 
   console.error(`[2/4] Building representative cohort of ${opts.cohortSize}...`);
   const { personas: cohort, groundingCoverage, cohortDiversity } = await buildCohort(pack, opts.cohortSize);
   console.error(`      -> ${cohort.length} buyer agents`);
+  opts.onEvent?.({ type: "stage", stage: "cohort", status: "done", note: `${cohort.length} agents` });
 
   const { arena, arenaMode } = resolveArena(pack, opts);
 
@@ -101,7 +106,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
       candidates: concepts,
       cohort,
       pack,
-      opts: { includeCompetitors: true, seed },
+      opts: { includeCompetitors: true, seed, onEvent: opts.onEvent ? (e) => opts.onEvent!({ type: "persona-decision", ...e } as any) : undefined },
     });
     return score(results, concepts, pack.benchmarkBrands ?? []);
   };
@@ -116,6 +121,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
 
   // Run 1 is always the headline report (back-compat for single-run consumers).
   const report = await runOnce(baseSeed);
+  opts.onEvent?.({ type: "stage", stage: "scoring", status: "done" });
   const winRateOf = (r: ArenaReport) => r.winner?.winRate ?? r.candidateShareVsField;
 
   let runStats: RunStats | undefined;

@@ -1,3 +1,5 @@
+import type { PipelineOnEvent } from "../server/events.ts";
+
 export interface LaunchpagesOptions {
   finalistsPath?: string;
   outDir?: string;
@@ -6,6 +8,7 @@ export interface LaunchpagesOptions {
   rounds?: number;
   bestOf?: number;
   currency?: string;
+  onEvent?: PipelineOnEvent;
 }
 
 export interface BuiltPage {

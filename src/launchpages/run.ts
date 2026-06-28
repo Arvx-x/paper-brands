@@ -55,6 +55,8 @@ export async function runLaunchpages(
   const failed: { conceptId: string; reason: string }[] = [];
   const usedSlugs = new Set<string>();
 
+  opts.onEvent?.({ type: "stage", stage: "creative", status: "start" });
+
   for (const fin of finalists) {
     const concept = fin.concept;
     let slug = slugify(concept.id || concept.name) || "concept";
@@ -74,6 +76,10 @@ export async function runLaunchpages(
         kit, spec: productSpec(kit), rounds, bestOf, refImages: id.refImages,
         outDir: bundleDir, llm, imageClient,
       });
+      const rel = (p: string) => "/" + p.replace(/^\.?\//, "");
+      opts.onEvent?.({ type: "image-ready", conceptId: concept.id, name: concept.name, kind: "logo", url: rel(id.logo.imagePath) });
+      opts.onEvent?.({ type: "image-ready", conceptId: concept.id, name: concept.name, kind: "packaging", url: rel(id.packaging.imagePath) });
+      opts.onEvent?.({ type: "image-ready", conceptId: concept.id, name: concept.name, kind: "product", url: rel(prod.champion.imagePath) });
       const assets = {
         brandKit: kit,
         logoPath: id.logo.imagePath,
@@ -84,6 +90,7 @@ export async function runLaunchpages(
       const res = await buildLandingPage(concept, assets, llm, {
         outDir: bundleDir, experimentId, model: opts.pageModel, currency,
       });
+      opts.onEvent?.({ type: "page-ready", conceptId: concept.id, name: concept.name, url: rel(res.indexPath) });
       built.push({
         conceptId: concept.id, name: concept.name, slug, bundleDir, indexPath: res.indexPath,
         syntheticScore: fin.winRate, usedFallback: res.usedFallback, warnings: res.warnings,
@@ -92,6 +99,7 @@ export async function runLaunchpages(
       failed.push({ conceptId: concept.id, reason: (e as Error).message });
     }
   }
+  opts.onEvent?.({ type: "stage", stage: "pages", status: "done" });
 
   const manifest: SmokeExperiment = {
     category: categoryId,
