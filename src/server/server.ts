@@ -1,6 +1,9 @@
 import { resolve, sep } from "node:path";
 import { RunBroadcaster, type Writer } from "./events.ts";
 import { runFoundryPipeline as realRunFoundryPipeline } from "./pipeline.ts";
+import { parseWorkbook } from "../userdata/parse.ts";
+import { buildTemplateWorkbook } from "../userdata/template.ts";
+import type { UserIntel } from "../userdata/types.ts";
 
 export interface ServerDeps {
   runFoundryPipeline?: typeof realRunFoundryPipeline;
@@ -51,15 +54,53 @@ export function makeHandler(deps: ServerDeps = {}) {
       }
       let category = "lipcare";
       let cohortSize = 80;
-      try { const body = (await req.json()) as any; category = body.category ?? category; cohortSize = Number(body.cohortSize ?? cohortSize) || 80; } catch { /* defaults */ }
+      let userIntel: UserIntel | undefined;
+      const ctype = req.headers.get("content-type") ?? "";
+      try {
+        if (ctype.includes("multipart/form-data")) {
+          const fd = await req.formData();
+          category = String(fd.get("category") ?? category);
+          cohortSize = Number(fd.get("cohortSize") ?? cohortSize) || 80;
+          const file = fd.get("file");
+          if (file instanceof Blob && file.size > 0) {
+            userIntel = parseWorkbook(await file.arrayBuffer()).intel;
+          }
+        } else {
+          const body = (await req.json()) as any;
+          category = body.category ?? category;
+          cohortSize = Number(body.cohortSize ?? cohortSize) || 80;
+        }
+      } catch (e) {
+        return Response.json({ error: `bad request: ${(e as Error).message}` }, { status: 400 });
+      }
       broadcaster.setRunning(category);
-      runFoundryPipeline(category, (e) => broadcaster.emit(e), {}, cohortSize)
+      runFoundryPipeline(category, (e) => broadcaster.emit(e), {}, cohortSize, userIntel)
         .then(() => broadcaster.setStatus("complete"))
         .catch((e) => {
           broadcaster.emit({ type: "run-error", message: (e as Error).message });
           broadcaster.setStatus("error");
         });
-      return Response.json({ started: true }, { status: 202 });
+      return Response.json({ started: true, userData: userIntel?.summary ?? null }, { status: 202 });
+    }
+
+    if (req.method === "GET" && path === "/api/template") {
+      const buf = buildTemplateWorkbook();
+      return new Response(buf, { headers: {
+        "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "content-disposition": 'attachment; filename="paper-brands-intel.xlsx"',
+      } });
+    }
+
+    if (req.method === "POST" && path === "/api/parse") {
+      try {
+        const fd = await req.formData();
+        const file = fd.get("file");
+        if (!(file instanceof Blob)) return Response.json({ error: "no file" }, { status: 400 });
+        const { intel, warnings } = parseWorkbook(await file.arrayBuffer());
+        return Response.json({ summary: intel.summary, warnings });
+      } catch (e) {
+        return Response.json({ error: `not a readable workbook: ${(e as Error).message}` }, { status: 400 });
+      }
     }
 
     if (req.method === "GET" && path === "/api/state") {
