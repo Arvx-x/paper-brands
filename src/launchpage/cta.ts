@@ -26,21 +26,33 @@ export function injectNotifyCta(
   let mode: "found-and-tagged" | "inserted";
 
   if (out.includes('id="notify-cta"')) {
-    // Already tagged (idempotent path) — leave the element, ensure script below.
+    // Already has the element — patch missing data attrs if needed, then fall through to script.
+    if (!out.includes('data-concept-id=')) {
+      const exp = ids.experimentId ? ` data-experiment-id="${esc(ids.experimentId)}"` : "";
+      out = out.replace(/(<[^>]*id="notify-cta"[^>]*)(>)/i,
+        `$1 data-cta="notify" data-concept-id="${esc(ids.conceptId)}"${exp} onclick="pbNotify()"$2`);
+    }
     mode = "found-and-tagged";
   } else {
-    // Try to find a notify-ish <button> or <a> and tag it.
-    const tagRe = /<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/i;
+    // Try to find a notify-ish <button> or <a> by its inner text and tag it.
+    // Use a two-pass approach: find candidates by simple tag boundary, check inner text.
+    const tagRe = /<(button|a)\b[^]*?<\/\1>/gi;
     let tagged = false;
-    out = out.replace(tagRe, (full, tag, attrs, inner) => {
-      if (tagged || !NOTIFY_TEXT.test(inner)) return full;
+    out = out.replace(tagRe, (full, tag) => {
+      if (tagged) return full;
+      // Extract inner text (strip tags) to check against NOTIFY_TEXT
+      const innerText = full.replace(/<[^>]+>/g, "");
+      if (!NOTIFY_TEXT.test(innerText)) return full;
       tagged = true;
       const exp = ids.experimentId ? ` data-experiment-id="${esc(ids.experimentId)}"` : "";
-      return `<${tag}${attrs} id="notify-cta" data-cta="notify" data-concept-id="${esc(ids.conceptId)}"${exp} onclick="pbNotify()">${inner}</${tag}>`;
+      // Inject attrs into the opening tag
+      return full.replace(
+        new RegExp(`^<${tag}\\b`, "i"),
+        `<${tag} id="notify-cta" data-cta="notify" data-concept-id="${esc(ids.conceptId)}"${exp} onclick="pbNotify()"`,
+      );
     });
     if (tagged) {
       mode = "found-and-tagged";
-      // ensure confirmation element exists
       if (!out.includes('id="notify-ok"')) {
         out = insertBeforeBodyEnd(out, `<p id="notify-ok" style="display:none">You're on the list \u2705</p>`);
       }

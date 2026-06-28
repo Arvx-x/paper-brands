@@ -50,3 +50,11 @@ test("malformed/empty html -> inserts, no throw", () => {
   expect(mode).toBe("inserted");
   expect(out).toContain('id="notify-cta"');
 });
+
+test("pre-existing id=notify-cta without data-concept-id -> data attrs patched", () => {
+  const html = `<html><body><button id="notify-cta" onclick="x()">Notify</button></body></html>`;
+  const { html: out, mode } = injectNotifyCta(html, { conceptId: "C2" });
+  expect(mode).toBe("found-and-tagged");
+  expect(out).toContain('data-concept-id="C2"');
+  expect(count(out, /id="notify-cta"/g)).toBe(1);
+});
