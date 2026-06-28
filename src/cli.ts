@@ -17,6 +17,7 @@ import { CalibrationStore } from "./calibration/store.ts";
 import { calibrate, composeEquity } from "./calibration/calibrate.ts";
 import type { CalibrationObservation } from "./calibration/types.ts";
 import { buildExperiment } from "./smoketest/experiment.ts";
+import { runLaunchpages } from "./launchpages/run.ts";
 import { writeExperiment, readExperiment } from "./smoketest/write.ts";
 import { parseResultsCsv } from "./smoketest/results.ts";
 
@@ -524,6 +525,23 @@ switch (cmd) {
     break;
   }
 
+  case "launchpages": {
+    const res = await runLaunchpages({
+      finalistsPath: arg("finalists", "out/finalists.json"),
+      outDir: arg("out", "out/launchpages"),
+      rounds: Number(arg("rounds", "2")),
+      bestOf: Number(arg("best-of", "2")),
+      currency: arg("currency", "INR"),
+    });
+    console.log(`\nLaunchpages \u2192 ${res.outDir}`);
+    for (const b of res.built) console.log(`  \u2713 ${b.name.padEnd(20)} \u2192 ${b.indexPath}${b.usedFallback ? "  (\u26a0 page fallback)" : ""}`);
+    for (const s of res.skipped) console.log(`  \u21b7 ${s} (skipped \u2014 already built)`);
+    for (const f of res.failed) console.log(`  \u2717 ${f.conceptId} (failed: ${f.reason})`);
+    console.log(`Wrote ${res.manifestPath} (${res.built.length} concepts)`);
+    console.log(`Next: deploy the bundles, run traffic, then bun run smoketest:import --category=<c> --csv=<results>`);
+    break;
+  }
+
   default:
     console.log(
       `paper-brands\n\n` +
@@ -531,6 +549,7 @@ switch (cmd) {
         `  bun run intel       --category="..." --geo="..." --currency=INR\n` +
         `  bun run tournament  --category=lipcare --candidates=4 --cohort=40 --out=out [--mode=cheap|deep] [--moat]\n` +
         `  bun run foundry     --category=lipcare --candidates=8 --finalists=3 --cohort=80\n` +
+        `  bun run launchpages --finalists=out/finalists.json --out=out/launchpages\n` +
         `  bun run winrate     --category=lipcare --candidates=4 --cohort=40\n` +
         `  bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5\n` +
         `  bun run creative    --category=lipcare --assets=ad-square,ad-story --research --rounds=3\n` +
