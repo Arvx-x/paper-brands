@@ -4,7 +4,8 @@
 <style>
 :root{--bg:#f6f6f4;--white:#ffffff;--border:#1a1a1a;--border-light:#e2e2df;--ink:#1a1a1a;--mut:#6b7280;--accent:#f9427d;--accent-bg:#fff0f4;--good:#16a34a;--warn:#d97706;--blue:#2563eb;--tag-bg:#f0f0ec}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5;display:flex;flex-direction:column;min-height:100vh}
 
 /* ── TOP BAR ── */
 .topbar{display:flex;align-items:center;gap:12px;padding:12px 24px;background:var(--white);border-bottom:1.5px solid var(--border);flex-wrap:wrap}
@@ -28,10 +29,10 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
 .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
 
 /* ── MAIN ── */
-main{padding:24px;max-width:1200px}
+main{padding:24px;width:100%;flex:1;display:flex;flex-direction:column}
 
 /* ── WINNER BANNER ── */
-.winner-banner{background:var(--white);border:1.5px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px}
+.winner-banner{background:var(--white);border:1.5px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;width:100%}
 .winner-badge{background:var(--ink);color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;border-radius:4px;padding:3px 8px;white-space:nowrap}
 .winner-name{font-size:18px;font-weight:800;letter-spacing:-.3px}
 .winner-stats{display:flex;gap:16px;margin-left:auto;flex-wrap:wrap}
@@ -40,9 +41,11 @@ main{padding:24px;max-width:1200px}
 .wstat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin-top:2px}
 .wstat.good .val{color:var(--good)}
 
-/* ── ARENA GRID ── */
-.arena{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}
-.card{background:var(--white);border:1.5px solid var(--border);border-radius:8px;padding:16px}
+/* ── ARENA LAYOUT ── */
+.arena{display:flex;flex-direction:column;gap:16px;width:100%;flex:1}
+.card{background:var(--white);border:1.5px solid var(--border);border-radius:8px;padding:20px;width:100%}
+.card.grow{flex:1;display:flex;flex-direction:column}
+.card.grow .feed-scroll{flex:1;max-height:none}
 .card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin-bottom:14px}
 
 /* ── TALLY BARS ── */
@@ -53,8 +56,9 @@ main{padding:24px;max-width:1200px}
 .tally-foot{font-size:11px;color:var(--mut);margin-top:12px;border-top:1px solid var(--border-light);padding-top:10px}
 
 /* ── DECISION FEED ── */
-.feed-scroll{max-height:380px;overflow-y:auto}
-.fitem{border:1.5px solid var(--border-light);border-left:3px solid var(--good);border-radius:6px;padding:9px 11px;margin-bottom:7px;font-size:12px;cursor:pointer;transition:border-color .15s;background:var(--white)}
+.feed-scroll{max-height:60vh;overflow-y:auto}
+@media(max-width:600px){.pages-grid{grid-template-columns:1fr}}
+.fitem{border:1.5px solid var(--border-light);border-left:3px solid var(--good);border-radius:6px;padding:12px 14px;margin-bottom:8px;font-size:13px;cursor:pointer;transition:border-color .15s;background:var(--white)}
 .fitem:hover{border-color:var(--border)}
 .fitem.ab{border-left-color:var(--border-light)}
 .fitem .ftop{display:flex;align-items:center;gap:6px;margin-bottom:3px}
@@ -75,7 +79,7 @@ main{padding:24px;max-width:1200px}
 .thumb.ph{display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--mut);flex-direction:column;gap:2px}
 
 /* ── PAGES TAB ── */
-.pages-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.pages-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;width:100%}
 .pcard{background:var(--white);border:1.5px solid var(--border);border-radius:8px;overflow:hidden}
 .pcard .pframe{height:220px;overflow:hidden;border-bottom:1.5px solid var(--border);background:var(--tag-bg);position:relative}
 .pcard iframe{width:100%;height:100%;border:0}
@@ -108,9 +112,9 @@ main{padding:24px;max-width:1200px}
 .err-banner{background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:14px 18px;color:#991b1b;margin-bottom:16px;font-weight:600}
 
 /* ── EMPTY STATE ── */
-.empty{text-align:center;padding:60px 20px;color:var(--mut)}
-.empty .big{font-size:32px;margin-bottom:8px}
-.empty p{font-size:14px}
+.empty{text-align:center;padding:80px 20px;color:var(--mut);width:100%}
+.empty .big{font-size:42px;margin-bottom:12px}
+.empty p{font-size:14px;max-width:400px;margin:0 auto}
 </style></head>
 <body>
 
@@ -182,10 +186,20 @@ function arenaHtml(s) {
   const total = s.decided + s.abstained;
   const leader = s.tally[0];
   const max = Math.max(1, ...s.tally.map((t) => t.votes));
+  // Resolve the real brand name for the leading blind label
+  const leaderDecision = leader ? s.feed.find((f) => f.pickedLabel === leader.label && !f.abstained) : null;
+  const leaderConceptId = leaderDecision?.pickedConceptId;
+  const leaderBrand = leaderConceptId ? (s.finalists.find((f) => f.conceptId === leaderConceptId) ?? s.brands.find((b) => b.conceptId === leaderConceptId)) : null;
+  const leaderName = leaderBrand?.name ?? leader?.label ?? "";
+  const leadPct = leader && s.decided > 0 ? ((leader.votes / s.decided) * 100).toFixed(0) : null;
   const winnerBanner = leader && s.decided > 0 ? `<div class="winner-banner">
-    <span class="winner-badge">Leading</span>
-    <span class="winner-name">${esc(leader.label)}</span>
+    <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+      <span class="winner-badge">Currently leading</span>
+      <span class="winner-name">${esc(leaderName)}</span>
+      ${leaderName !== leader.label ? `<span style="font-size:11px;color:var(--mut)">${esc(leader.label)}</span>` : ""}
+    </div>
     <div class="winner-stats">
+      <div class="wstat good"><div class="val">${leadPct}%</div><div class="lbl">Share</div></div>
       <div class="wstat good"><div class="val">${leader.votes}</div><div class="lbl">Votes</div></div>
       <div class="wstat"><div class="val">${s.decided}</div><div class="lbl">Decided</div></div>
       <div class="wstat"><div class="val">${s.abstained}</div><div class="lbl">Abstained</div></div>
@@ -199,8 +213,15 @@ function arenaHtml(s) {
     ? `<div class="fitem ab" data-idx="${i}"><div class="ftop"><span class="pid">${esc(f.personaId)}</span><span class="seg">${esc(f.segment)}</span><span style="font-size:11px;color:var(--mut)">${f.errored ? "errored" : "abstained"}</span></div></div>`
     : `<div class="fitem" data-idx="${i}"><div class="ftop"><span class="pid">${esc(f.personaId)}</span><span class="seg">${esc(f.segment)}</span><span class="opt">→ ${esc(f.pickedLabel)}</span>${f.confidence != null ? `<span class="conv">conf ${f.confidence.toFixed(2)}</span>` : ""}</div><div class="reason">"${esc(f.reason)}"</div>${f.topObjection ? `<div class="obj">Objection: ${esc(f.topObjection)}</div>` : ""}</div>`).join("");
   return `${winnerBanner}<div class="arena">
-    <div class="card"><div class="card-title">Vote tally (blind labels)</div>${bars}<div class="tally-foot">${total || 0} agents responded · click a decision to inspect →</div></div>
-    <div class="card"><div class="card-title">Live decisions</div><div class="feed-scroll">${feed || '<div style="color:var(--mut);padding:20px 0;text-align:center">Decisions will appear here…</div>'}</div></div>
+    <div class="card">
+      <div class="card-title">Vote tally (blind labels)</div>
+      ${bars}
+      <div class="tally-foot">${total || 0} agents responded · click a decision below to inspect conversation</div>
+    </div>
+    <div class="card grow">
+      <div class="card-title">Live decisions — click any to open conversation</div>
+      <div class="feed-scroll">${feed || '<div style="color:var(--mut);padding:30px 0;text-align:center">Decisions will stream here as agents respond…</div>'}</div>
+    </div>
   </div>`;
 }
 
