@@ -85,6 +85,7 @@ export async function buildCategoryPack(
       {
         role: "user",
         content:
+          (brief.notes ? brief.notes + "\n\n" : "") +
           (brief.evidence
             ? `EVIDENCE corpus (real harvested reviews/listings/guides):\n` +
               `"""\n${brief.evidence}\n"""\n\n`
