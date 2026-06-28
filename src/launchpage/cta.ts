@@ -29,8 +29,12 @@ export function injectNotifyCta(
     // Already has the element — patch missing data attrs if needed, then fall through to script.
     if (!out.includes('data-concept-id=')) {
       const exp = ids.experimentId ? ` data-experiment-id="${esc(ids.experimentId)}"` : "";
-      out = out.replace(/(<[^>]*id="notify-cta"[^>]*)(>)/i,
-        `$1 data-cta="notify" data-concept-id="${esc(ids.conceptId)}"${exp} onclick="pbNotify()"$2`);
+      // Use [^]*? to handle `>` inside attribute values; strip any prior onclick to avoid duplication
+      // (HTML spec: first value wins — a prior onclick would shadow pbNotify()).
+      out = out.replace(/(<(?:button|a|div)\b[^]*?id="notify-cta")[^]*?(>)/i, (_, pre, close) => {
+        const cleanedPre = pre.replace(/\s+onclick="[^"]*"/gi, "");
+        return `${cleanedPre} data-cta="notify" data-concept-id="${esc(ids.conceptId)}"${exp} onclick="pbNotify()"${close}`;
+      });
     }
     mode = "found-and-tagged";
   } else {

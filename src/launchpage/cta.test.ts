@@ -51,10 +51,14 @@ test("malformed/empty html -> inserts, no throw", () => {
   expect(out).toContain('id="notify-cta"');
 });
 
-test("pre-existing id=notify-cta without data-concept-id -> data attrs patched", () => {
+test("pre-existing id=notify-cta without data-concept-id -> data attrs patched, onclick not duplicated", () => {
   const html = `<html><body><button id="notify-cta" onclick="x()">Notify</button></body></html>`;
   const { html: out, mode } = injectNotifyCta(html, { conceptId: "C2" });
   expect(mode).toBe("found-and-tagged");
   expect(out).toContain('data-concept-id="C2"');
   expect(count(out, /id="notify-cta"/g)).toBe(1);
+  // Prior onclick must be stripped; pbNotify must be the only onclick
+  expect(count(out, /onclick=/g)).toBe(1);
+  expect(out).toContain('onclick="pbNotify()"');
+  expect(out).not.toContain('onclick="x()"');
 });

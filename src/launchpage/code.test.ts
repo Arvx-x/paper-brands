@@ -7,7 +7,7 @@ function concept() {
     tagline: "tag", claims: ["claim a", "claim b"], packagingDirection: "x", brandVoice: "x",
     landingHeadline: "Big Headline", topAdAngles: [], objections: [], launchRisks: [] } as any;
 }
-const assets: any = { brandKit: { palette: [{ name: "Ink", hex: "#171411", role: "primary" }], typeMoods: [], artDirection: "", voice: "", logoDirection: "" }, heroPath: "/src/hero.png" };
+const assets: any = { brandKit: { palette: [{ name: "Ink", hex: "#171411", role: "primary" }], moodKeywords: ["minimal", "bold"], artDirection: "", voice: { tone: "warm and direct", doSay: [], dontSay: [] }, logoDirection: "" }, heroPath: "/src/hero.png" };
 
 test("returns the html doc the LLM produced (fenced block extracted)", async () => {
   const page = "<!DOCTYPE html><html><body><h1>Big Headline</h1></body></html>";
@@ -37,4 +37,12 @@ test("passes the model through and references hero asset path in prompt", async 
   await codePage(concept(), assets, llm, "gemini-3.1-flash");
   expect(capturedModel).toBe("gemini-3.1-flash");
   expect(capturedPrompt).toContain("assets/hero");
+});
+
+test("prompt includes moodKeywords and voice.tone from correct BrandKit fields", async () => {
+  let capturedPrompt = "";
+  const llm = { complete: async (o: any) => { capturedPrompt = o.messages.map((m: any) => m.content).join("\n"); return "<!DOCTYPE html><html><body>x</body></html>"; } } as any;
+  await codePage(concept(), assets, llm, "gemini-3.1-flash");
+  expect(capturedPrompt).toContain("minimal");    // from moodKeywords
+  expect(capturedPrompt).toContain("warm and direct"); // from voice.tone
 });
