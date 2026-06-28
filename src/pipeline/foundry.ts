@@ -16,11 +16,12 @@ export interface Finalist {
 export interface FinalistsArtifact {
   categoryId: string;
   builtAt: string;
-  spawned: number;
+  spawned: number;           // total generated concepts considered (t.concepts.length)
   selected: number;
   rankedBy: "winRate";
   finalists: Finalist[];
   warnings: string[];
+  moatDegraded?: boolean;    // true if the moat scoring pass was degraded
 }
 
 export interface FoundryOptions {
@@ -51,7 +52,7 @@ export function selectFinalists(t: TournamentOutput, n: number): FinalistsArtifa
     .slice()
     .sort((a, b) => b.winRate - a.winRate || a.conceptId.localeCompare(b.conceptId));
 
-  const spawned = ranked.length;
+  const spawned = t.concepts.length; // generated concepts, not the filtered rank list
   const finalists: Finalist[] = [];
   for (const score of ranked) {
     if (finalists.length >= n) break;
@@ -85,6 +86,7 @@ export function selectFinalists(t: TournamentOutput, n: number): FinalistsArtifa
     rankedBy: "winRate",
     finalists,
     warnings,
+    moatDegraded: t.moat?.degraded,
   };
 }
 
