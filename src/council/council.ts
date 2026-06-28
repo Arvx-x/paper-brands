@@ -147,7 +147,15 @@ export class Council {
       )
     ).filter((x): x is { concept: BrandConcept; tag: WedgeTag } => x !== null);
 
-    const concepts = specified.map((x) => x.concept);
+    // Dedupe concept ids — LLM sometimes returns the same id (e.g. "001") for multiple
+    // concepts. Replace duplicates with a slug of the name + index so every id is unique.
+    const usedIds = new Set<string>();
+    const concepts = specified.map((x, i) => {
+      let id = x.concept.id;
+      if (!id || usedIds.has(id)) id = `${slug(x.concept.name)}-${i + 1}`;
+      usedIds.add(id);
+      return id === x.concept.id ? x.concept : { ...x.concept, id };
+    });
     const successfulTags = specified.map((x) => x.tag);
     const fp = (t: WedgeTag) => `${t.fingerprint.wedge}|${t.fingerprint.segment}|${t.fingerprint.tier}`;
     const distinctWedgeCount = new Set(successfulTags.map(fp)).size;

@@ -93,7 +93,7 @@ switch (cmd) {
     const out = await runTournament({
       categoryId: arg("category", "lipcare")!,
       candidates: Number(arg("candidates", "4")),
-      cohortSize: Number(arg("cohort", "40")),
+      cohortSize: Number(arg("cohort", "80")),
       outDir: arg("out", "out"),
       mode: parseArenaMode(),
       deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
@@ -111,7 +111,7 @@ switch (cmd) {
     const out = await runTournament({
       categoryId: arg("category", "lipcare")!,
       candidates: Number(arg("candidates", "4")),
-      cohortSize: Number(arg("cohort", "40")),
+      cohortSize: Number(arg("cohort", "80")),
       outDir: arg("out", "out"),
       mode: parseArenaMode(),
       deep: arg("deep", "") === "true" || arg("deep", "") === "deep",
