@@ -2,109 +2,263 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Paper Brands — Playground</title>
 <style>
-:root{--bg:#0f1117;--panel:#161b27;--line:#222a3d;--ink:#cdd3e0;--mut:#8a93a8;--accent:#5b8cff;--good:#5bd6a0;--warn:#e0a05b}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-.bar{display:flex;gap:10px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line)}
-.bar input{flex:1;max-width:340px;background:#0f1117;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:9px 12px}
-.bar button{background:var(--accent);border:0;color:#fff;border-radius:8px;padding:9px 18px;cursor:pointer;font-weight:600}
-.pill{margin-left:auto;font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:4px 12px}
-.tabs{display:flex;gap:8px;padding:12px 20px}
-.tab{background:var(--panel);color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:6px 16px;cursor:pointer;font-size:13px}
-.tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-main{padding:0 20px 40px}
-.arena{display:grid;grid-template-columns:1fr 1.1fr;gap:16px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
-.tlabel{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin-bottom:10px}
-.barrow{margin-bottom:9px}.barrow .h{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
-.track{background:#1b2030;border-radius:5px;height:14px;overflow:hidden}.fill{background:var(--accent);height:14px;border-radius:5px;transition:width .3s}
-.fitem{background:#11151f;border-left:3px solid var(--good);border-radius:6px;padding:7px 9px;margin-bottom:6px;font-size:12px}
-.fitem.ab{border-left-color:#6b7280}.fitem .r{color:var(--mut)}
-.brow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
-.brow .name{width:150px;font-weight:600}.thumb{width:54px;height:54px;border-radius:8px;background:#222a3d;object-fit:cover}.thumb.ph{display:flex;align-items:center;justify-content:center;font-size:9px;color:#555}
-.pages{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.pcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.pcard iframe{width:100%;height:200px;border:0;background:#fff}
-.pcard .b{padding:12px}.pcard .b a{display:block;text-align:center;background:var(--accent);color:#fff;text-decoration:none;border-radius:7px;padding:8px;margin-top:8px}
-.err{background:#3a1620;border:1px solid #6b2433;color:#ffb4c0;border-radius:10px;padding:12px;margin:14px 0}
-.muted{color:var(--mut)}
+:root{--bg:#f6f6f4;--white:#ffffff;--border:#1a1a1a;--border-light:#e2e2df;--ink:#1a1a1a;--mut:#6b7280;--accent:#f9427d;--accent-bg:#fff0f4;--good:#16a34a;--warn:#d97706;--blue:#2563eb;--tag-bg:#f0f0ec}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5}
+
+/* ── TOP BAR ── */
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 24px;background:var(--white);border-bottom:1.5px solid var(--border);flex-wrap:wrap}
+.brand{font-weight:800;font-size:16px;letter-spacing:-.3px;margin-right:4px;white-space:nowrap}
+.cat-input{flex:1;min-width:220px;max-width:360px;border:1.5px solid var(--border);border-radius:6px;padding:8px 12px;font-size:13px;background:var(--white);outline:none}
+.cat-input:focus{border-color:var(--accent)}
+.cohort-wrap{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);white-space:nowrap}
+.cohort-wrap input[type=range]{width:88px;accent-color:var(--accent);cursor:pointer}
+.cohort-num{font-weight:700;color:var(--ink);min-width:24px}
+.run-btn{background:var(--ink);color:#fff;border:1.5px solid var(--ink);border-radius:6px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s}
+.run-btn:hover{background:#333}
+.status-pill{margin-left:auto;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;border:1.5px solid var(--border-light);border-radius:4px;padding:4px 10px;background:var(--tag-bg);white-space:nowrap}
+.status-pill.running{border-color:var(--warn);color:var(--warn);background:#fffbeb}
+.status-pill.complete{border-color:var(--good);color:var(--good);background:#f0fdf4}
+.status-pill.error{border-color:#dc2626;color:#dc2626;background:#fef2f2}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:0;padding:0 24px;background:var(--white);border-bottom:1.5px solid var(--border)}
+.tab{padding:12px 20px;font-size:13px;font-weight:600;color:var(--mut);cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;transition:color .15s}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--ink);border-bottom-color:var(--ink)}
+
+/* ── MAIN ── */
+main{padding:24px;max-width:1200px}
+
+/* ── WINNER BANNER ── */
+.winner-banner{background:var(--white);border:1.5px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px}
+.winner-badge{background:var(--ink);color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;border-radius:4px;padding:3px 8px;white-space:nowrap}
+.winner-name{font-size:18px;font-weight:800;letter-spacing:-.3px}
+.winner-stats{display:flex;gap:16px;margin-left:auto;flex-wrap:wrap}
+.wstat{text-align:right}
+.wstat .val{font-size:22px;font-weight:800;line-height:1}
+.wstat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin-top:2px}
+.wstat.good .val{color:var(--good)}
+
+/* ── ARENA GRID ── */
+.arena{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}
+.card{background:var(--white);border:1.5px solid var(--border);border-radius:8px;padding:16px}
+.card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin-bottom:14px}
+
+/* ── TALLY BARS ── */
+.barrow{margin-bottom:10px}
+.barrow .bh{display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:4px}
+.track{background:var(--tag-bg);border:1px solid var(--border-light);border-radius:3px;height:12px;overflow:hidden}
+.fill{background:var(--ink);height:12px;border-radius:2px;transition:width .35s ease}
+.tally-foot{font-size:11px;color:var(--mut);margin-top:12px;border-top:1px solid var(--border-light);padding-top:10px}
+
+/* ── DECISION FEED ── */
+.feed-scroll{max-height:380px;overflow-y:auto}
+.fitem{border:1.5px solid var(--border-light);border-left:3px solid var(--good);border-radius:6px;padding:9px 11px;margin-bottom:7px;font-size:12px;cursor:pointer;transition:border-color .15s;background:var(--white)}
+.fitem:hover{border-color:var(--border)}
+.fitem.ab{border-left-color:var(--border-light)}
+.fitem .ftop{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.fitem .pid{font-weight:700;font-size:11px}
+.fitem .seg{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);background:var(--tag-bg);border:1px solid var(--border-light);border-radius:3px;padding:1px 5px}
+.fitem .opt{font-weight:700;color:var(--blue);font-size:11px}
+.fitem .conv{font-size:10px;color:var(--mut);margin-left:auto}
+.fitem .reason{color:var(--mut);font-size:11px;line-height:1.4}
+.fitem .obj{color:var(--warn);font-size:10px;margin-top:2px}
+
+/* ── CREATIVE TAB ── */
+.brow{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border-light)}
+.brow:last-child{border-bottom:0}
+.brow .bname{font-weight:700;width:160px;flex-shrink:0}
+.brow .bmoat{font-size:11px;color:var(--mut);margin-top:2px}
+.thumb-wrap{display:flex;gap:8px}
+.thumb{width:60px;height:60px;border-radius:6px;border:1.5px solid var(--border-light);object-fit:cover;background:var(--tag-bg)}
+.thumb.ph{display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--mut);flex-direction:column;gap:2px}
+
+/* ── PAGES TAB ── */
+.pages-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.pcard{background:var(--white);border:1.5px solid var(--border);border-radius:8px;overflow:hidden}
+.pcard .pframe{height:220px;overflow:hidden;border-bottom:1.5px solid var(--border);background:var(--tag-bg);position:relative}
+.pcard iframe{width:100%;height:100%;border:0}
+.pcard .pbody{padding:14px}
+.pcard .pname{font-weight:800;font-size:15px;letter-spacing:-.2px;margin-bottom:6px}
+.pcard .pmeta{display:flex;gap:10px;margin-bottom:12px}
+.pcard .ptag{font-size:11px;font-weight:600;background:var(--tag-bg);border:1px solid var(--border-light);border-radius:3px;padding:2px 7px}
+.pcard .ptag.win{background:var(--accent-bg);color:var(--accent);border-color:var(--accent)}
+.pcard a{display:block;text-align:center;background:var(--ink);color:#fff;text-decoration:none;border-radius:6px;padding:9px;font-size:13px;font-weight:700}
+.pcard a:hover{background:#333}
+
+/* ── MODAL (conversation) ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--white);border:2px solid var(--border);border-radius:10px;width:540px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column}
+.modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1.5px solid var(--border-light)}
+.modal-head .mname{font-weight:800;font-size:15px}
+.modal-head .mseg{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);background:var(--tag-bg);border:1px solid var(--border-light);border-radius:3px;padding:2px 7px}
+.modal-head .mclose{margin-left:auto;cursor:pointer;font-size:18px;color:var(--mut);line-height:1;border:0;background:0}
+.modal-body{padding:20px;overflow-y:auto;flex:1}
+.detail-row{display:flex;gap:8px;margin-bottom:8px;font-size:13px}
+.detail-row .dk{width:90px;flex-shrink:0;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;padding-top:1px}
+.detail-row .dv{color:var(--ink);font-weight:500}
+.detail-row .dv.pick{color:var(--blue);font-weight:700}
+.detail-row .dv.obj{color:var(--warn)}
+.conf-bar{height:6px;background:var(--tag-bg);border:1px solid var(--border-light);border-radius:3px;margin-top:6px;overflow:hidden}
+.conf-fill{height:6px;background:var(--good);border-radius:2px}
+
+/* ── ERROR ── */
+.err-banner{background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:14px 18px;color:#991b1b;margin-bottom:16px;font-weight:600}
+
+/* ── EMPTY STATE ── */
+.empty{text-align:center;padding:60px 20px;color:var(--mut)}
+.empty .big{font-size:32px;margin-bottom:8px}
+.empty p{font-size:14px}
 </style></head>
 <body>
-<div class="bar">
-  <input id="cat" placeholder="category, e.g. lip-balm-india" value="lip-balm-india">
-  <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);white-space:nowrap">
-    Cohort
-    <input id="cohort" type="range" min="20" max="120" step="20" value="80" style="width:90px;accent-color:var(--accent)">
-    <span id="cohort-val" style="min-width:26px;color:var(--ink)">80</span>
-  </label>
-  <button id="run">Run</button>
-  <span class="pill" id="status">idle</span>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <span class="brand">Paper Brands</span>
+  <input id="cat" class="cat-input" placeholder="category — e.g. lip-balm-india" value="lip-balm-india">
+  <div class="cohort-wrap">
+    <span>Cohort</span>
+    <input id="cohort" type="range" min="20" max="120" step="20" value="80">
+    <span id="cohort-val" class="cohort-num">80</span>
+  </div>
+  <button id="run" class="run-btn">▶ Run</button>
+  <span class="status-pill" id="status">Idle</span>
 </div>
+
+<!-- TABS -->
 <div class="tabs" id="tabs">
-  <span class="tab" data-tab="arena">① Arena</span>
-  <span class="tab" data-tab="creative">② Creative</span>
-  <span class="tab" data-tab="pages">③ Pages</span>
+  <span class="tab" data-tab="arena">Arena</span>
+  <span class="tab" data-tab="creative">Creative</span>
+  <span class="tab" data-tab="pages">Pages</span>
 </div>
+
 <main id="main"></main>
+
+<!-- CONVERSATION MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="mname" id="m-name"></span>
+      <span class="mseg" id="m-seg"></span>
+      <button class="mclose" id="mclose">✕</button>
+    </div>
+    <div class="modal-body" id="m-body"></div>
+  </div>
+</div>
 
 <script type="module">
 import { reduce, initialState } from "/viewstate.js";
 let state = initialState();
+let modalData = null;
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const pct = (v) => v != null ? (v * 100).toFixed(0) + "%" : "—";
+
+// ── STATUS PILL ──
+function statusClass(s) { return s === "running" ? "running" : s === "complete" ? "complete" : s === "error" ? "error" : ""; }
 
 function render(s) {
-  $("status").textContent = s.status + (s.category ? " · " + s.category : "");
+  const pill = $("status");
+  pill.textContent = s.status === "running" ? "Running" + (s.category ? " · " + s.category : "") : s.status.charAt(0).toUpperCase() + s.status.slice(1);
+  pill.className = "status-pill " + statusClass(s.status);
   for (const t of document.querySelectorAll(".tab")) t.classList.toggle("active", t.dataset.tab === s.activeTab);
   const m = $("main");
-  if (s.error) { m.innerHTML = `<div class="err">Run error: ${esc(s.error)}</div>`; return; }
-  if (s.activeTab === "arena") m.innerHTML = arenaHtml(s);
-  else if (s.activeTab === "creative") m.innerHTML = creativeHtml(s);
-  else m.innerHTML = pagesHtml(s);
+  let html = "";
+  if (s.error) html += `<div class="err-banner">⚠ Run error: ${esc(s.error)}</div>`;
+  if (s.activeTab === "arena") html += arenaHtml(s);
+  else if (s.activeTab === "creative") html += creativeHtml(s);
+  else html += pagesHtml(s);
+  m.innerHTML = html;
+  // re-attach feed click listeners after re-render
+  for (const el of document.querySelectorAll(".fitem[data-idx]")) {
+    el.onclick = () => { const f = s.feed[Number(el.dataset.idx)]; if (f) openModal(f); };
+  }
 }
 
+// ── ARENA ──
 function arenaHtml(s) {
   const total = s.decided + s.abstained;
+  const leader = s.tally[0];
   const max = Math.max(1, ...s.tally.map((t) => t.votes));
-  const bars = s.tally.map((t) => `<div class="barrow"><div class="h"><span>${esc(t.label)}</span><span>${t.votes}</span></div><div class="track"><div class="fill" style="width:${(t.votes / max) * 100}%"></div></div></div>`).join("") || `<div class="muted">waiting for decisions…</div>`;
-  const feed = s.feed.map((f) => f.abstained || f.errored
-    ? `<div class="fitem ab"><b>${esc(f.personaId)}</b> ${esc(f.segment)} → <span class="muted">${f.errored ? "errored" : "abstained"}</span></div>`
-    : `<div class="fitem"><b>${esc(f.personaId)}</b> ${esc(f.segment)} → <b style="color:var(--accent)">${esc(f.pickedLabel)}</b>${f.confidence != null ? " · conv " + f.confidence.toFixed(2) : ""}<br><span class="r">"${esc(f.reason)}"${f.topObjection ? " · obj: " + esc(f.topObjection) : ""}</span></div>`).join("");
-  return `<div class="arena">
-    <div class="panel"><div class="tlabel">Vote tally (blind)</div>${bars}<div class="muted" style="margin-top:10px">${s.decided}/${total || "?"} decided · ${s.abstained} abstained</div></div>
-    <div class="panel"><div class="tlabel">Live decisions</div>${feed || '<div class="muted">…</div>'}</div>
+  const winnerBanner = leader && s.decided > 0 ? `<div class="winner-banner">
+    <span class="winner-badge">Leading</span>
+    <span class="winner-name">${esc(leader.label)}</span>
+    <div class="winner-stats">
+      <div class="wstat good"><div class="val">${leader.votes}</div><div class="lbl">Votes</div></div>
+      <div class="wstat"><div class="val">${s.decided}</div><div class="lbl">Decided</div></div>
+      <div class="wstat"><div class="val">${s.abstained}</div><div class="lbl">Abstained</div></div>
+    </div>
+  </div>` : "";
+  const bars = s.tally.length ? s.tally.map((t) => `<div class="barrow">
+    <div class="bh"><span>${esc(t.label)}</span><span>${t.votes} vote${t.votes !== 1 ? "s" : ""}</span></div>
+    <div class="track"><div class="fill" style="width:${(t.votes / max) * 100}%"></div></div>
+  </div>`).join("") : `<div style="color:var(--mut);padding:20px 0;text-align:center">Waiting for buyer agents…</div>`;
+  const feed = s.feed.map((f, i) => f.abstained || f.errored
+    ? `<div class="fitem ab" data-idx="${i}"><div class="ftop"><span class="pid">${esc(f.personaId)}</span><span class="seg">${esc(f.segment)}</span><span style="font-size:11px;color:var(--mut)">${f.errored ? "errored" : "abstained"}</span></div></div>`
+    : `<div class="fitem" data-idx="${i}"><div class="ftop"><span class="pid">${esc(f.personaId)}</span><span class="seg">${esc(f.segment)}</span><span class="opt">→ ${esc(f.pickedLabel)}</span>${f.confidence != null ? `<span class="conv">conf ${f.confidence.toFixed(2)}</span>` : ""}</div><div class="reason">"${esc(f.reason)}"</div>${f.topObjection ? `<div class="obj">Objection: ${esc(f.topObjection)}</div>` : ""}</div>`).join("");
+  return `${winnerBanner}<div class="arena">
+    <div class="card"><div class="card-title">Vote tally (blind labels)</div>${bars}<div class="tally-foot">${total || 0} agents responded · click a decision to inspect →</div></div>
+    <div class="card"><div class="card-title">Live decisions</div><div class="feed-scroll">${feed || '<div style="color:var(--mut);padding:20px 0;text-align:center">Decisions will appear here…</div>'}</div></div>
   </div>`;
 }
 
+// ── CREATIVE ──
 function creativeHtml(s) {
-  if (!s.creative.length) return `<div class="panel muted">Creative will appear once finalists are picked…</div>`;
-  return `<div class="panel">${s.creative.map((b) => {
+  if (!s.creative.length) return `<div class="card"><div class="empty"><div class="big">🎨</div><p>Creative assets will appear once finalists are selected from the arena.</p></div></div>`;
+  const rows = s.creative.map((b) => {
     const moat = s.finalists.find((f) => f.conceptId === b.conceptId)?.moatOverall;
-    const cell = (label, url) => url ? `<img class="thumb" src="${esc(url)}" onerror="this.style.opacity=.2">` : `<div class="thumb ph">${label}</div>`;
-    return `<div class="brow"><div class="name">${esc(b.name)}${moat != null ? `<div class="muted" style="font-size:11px">moat ${moat.toFixed(2)}</div>` : ""}</div>${cell("logo", b.logo)}${cell("pack", b.packaging)}${cell("product", b.product)}</div>`;
-  }).join("")}</div>`;
+    const cell = (lbl, url) => url ? `<img class="thumb" src="${esc(url)}" title="${lbl}" onerror="this.style.opacity=.15">` : `<div class="thumb ph"><span>${lbl}</span></div>`;
+    return `<div class="brow"><div><div class="bname">${esc(b.name)}</div>${moat != null ? `<div class="bmoat">moat ${moat.toFixed(2)}</div>` : ""}</div><div class="thumb-wrap">${cell("logo", b.logo)}${cell("pack", b.packaging)}${cell("prod", b.product)}</div></div>`;
+  }).join("");
+  return `<div class="card">${rows}</div>`;
 }
 
+// ── PAGES ──
 function pagesHtml(s) {
-  if (!s.pages.length) return `<div class="panel muted">Landing pages will appear here when ready…</div>`;
-  return `<div class="pages">${s.pages.map((p) => `<div class="pcard"><iframe src="${esc(p.url)}" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe><div class="b"><b>${esc(p.name)}</b><div class="muted" style="font-size:12px">${p.winRate != null ? "win " + (p.winRate * 100).toFixed(0) + "%" : ""}${p.moatOverall != null ? " · moat " + p.moatOverall.toFixed(2) : ""}</div><a href="${esc(p.url)}" target="_blank">Open page ↗</a></div></div>`).join("")}</div>`;
+  if (!s.pages.length) return `<div class="card"><div class="empty"><div class="big">🚀</div><p>Your 3 branded landing pages will appear here when the run completes.</p></div></div>`;
+  const cards = s.pages.map((p) => {
+    const winTag = p.winRate != null ? `<span class="ptag win">Win ${pct(p.winRate)}</span>` : "";
+    const moatTag = p.moatOverall != null ? `<span class="ptag">Moat ${p.moatOverall.toFixed(2)}</span>` : "";
+    return `<div class="pcard"><div class="pframe"><iframe src="${esc(p.url)}" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe></div><div class="pbody"><div class="pname">${esc(p.name)}</div><div class="pmeta">${winTag}${moatTag}</div><a href="${esc(p.url)}" target="_blank">Open page ↗</a></div></div>`;
+  }).join("");
+  return `<div class="pages-grid">${cards}</div>`;
 }
 
+// ── MODAL ──
+function openModal(f) {
+  $("m-name").textContent = f.personaId;
+  $("m-seg").textContent = f.segment;
+  const conf = f.confidence != null ? `<div class="conf-bar"><div class="conf-fill" style="width:${(f.confidence * 100).toFixed(0)}%"></div></div>` : "";
+  $("m-body").innerHTML = `
+    <div class="detail-row"><div class="dk">Picked</div><div class="dv pick">${esc(f.pickedLabel)} (${esc(f.pickedConceptId)})</div></div>
+    <div class="detail-row"><div class="dk">Reason</div><div class="dv">${esc(f.reason)}</div></div>
+    ${f.topObjection ? `<div class="detail-row"><div class="dk">Objection</div><div class="dv obj">${esc(f.topObjection)}</div></div>` : ""}
+    ${f.confidence != null ? `<div class="detail-row"><div class="dk">Confidence</div><div class="dv">${(f.confidence * 100).toFixed(0)}%${conf}</div></div>` : ""}
+    ${f.willingnessToPayMinor ? `<div class="detail-row"><div class="dk">WTP</div><div class="dv">₹${(f.willingnessToPayMinor / 100).toLocaleString("en-IN")}</div></div>` : ""}
+    ${f.abstained ? `<div class="detail-row"><div class="dk">Status</div><div class="dv" style="color:var(--mut)">Abstained</div></div>` : ""}
+  `;
+  $("modal").classList.add("open");
+}
+$("mclose").onclick = () => $("modal").classList.remove("open");
+$("modal").onclick = (e) => { if (e.target === $("modal")) $("modal").classList.remove("open"); };
+
+// ── TABS / COHORT / RUN ──
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => { state = { ...state, activeTab: t.dataset.tab }; render(state); };
-
 $("cohort").oninput = () => { $("cohort-val").textContent = $("cohort").value; };
-
 $("run").onclick = async () => {
   const cohortSize = Number($("cohort").value) || 80;
   const r = await fetch("/api/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: $("cat").value, cohortSize }) });
   if (r.status === 409) { $("status").textContent = "a run is already active"; }
 };
 
+// ── INIT ──
 (async () => {
   try { const snap = await (await fetch("/api/state")).json(); for (const e of snap.events ?? []) state = reduce(state, e); render(state); } catch { render(state); }
   const es = new EventSource("/api/events");
   es.onmessage = (m) => { try { state = reduce(state, JSON.parse(m.data)); render(state); } catch {} };
 })();
-
 render(state);
 </script>
 </body></html>
