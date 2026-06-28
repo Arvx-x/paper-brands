@@ -61,8 +61,10 @@ test("page-ready joins winRate/moat from finalist", () => {
   expect(s.pages[0]!.moatOverall).toBe(0.7);
 });
 
-test("stage-done advances activeTab arena->creative->pages", () => {
+test("stage-done advances activeTab harvest->arena->creative->pages", () => {
   let s = fold([{ type: "run-started", category: "x" }]);
+  expect(s.activeTab).toBe("harvest");
+  s = reduce(s, ev({ type: "stage", stage: "council", status: "start" }));
   expect(s.activeTab).toBe("arena");
   s = reduce(s, ev({ type: "stage", stage: "arena", status: "done" }));
   expect(s.activeTab).toBe("creative");

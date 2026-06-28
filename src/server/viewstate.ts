@@ -12,11 +12,24 @@ export interface FinalistView {
 }
 export interface PageView { conceptId: string; name: string; url: string; winRate?: number; moatOverall?: number; }
 
+export interface HarvestState {
+  lenses: { id: string; findings: number; citations: number }[];
+  sourcesFetched?: number; sourcesTotal?: number; domains?: number; independent?: number;
+  skus?: number; priceBands?: { label: string; min: number; max: number; share: number }[];
+  degraded?: boolean;
+}
+export interface IntelState {
+  confidence?: string; grounded?: boolean; attribution?: number;
+  segments?: number; competitors?: number; degraded?: boolean;
+}
+
 export interface ViewState {
   status: "idle" | "running" | "complete" | "error";
   category?: string;
-  activeTab: "arena" | "creative" | "pages";
+  activeTab: "harvest" | "arena" | "creative" | "pages";
   stages: Record<Stage, "pending" | "active" | "done">;
+  harvest: HarvestState;
+  intel: IntelState;
   brands: { conceptId: string; name: string; positioning: string }[];
   tally: BrandVote[];
   decided: number; abstained: number;
@@ -33,8 +46,9 @@ export function initialState(): ViewState {
   const stages = {} as Record<Stage, "pending" | "active" | "done">;
   for (const s of STAGES) stages[s] = "pending";
   return {
-    status: "idle", activeTab: "arena", stages, brands: [], tally: [],
+    status: "idle", activeTab: "harvest", stages, brands: [], tally: [],
     decided: 0, abstained: 0, feed: [], creative: [], finalists: [], pages: [],
+    harvest: { lenses: [] }, intel: {},
   };
 }
 
@@ -49,9 +63,19 @@ export function reduce(state: ViewState, e: PipelineEvent): ViewState {
     case "stage": {
       const stages = { ...state.stages, [e.stage]: e.status === "start" ? "active" : "done" } as ViewState["stages"];
       let activeTab = state.activeTab;
+      if (e.status === "start" && (e.stage === "harvest" || e.stage === "intel")) activeTab = "harvest";
+      if (e.status === "start" && (e.stage === "council" || e.stage === "arena")) activeTab = "arena";
       if (e.status === "done" && e.stage === "arena") activeTab = "creative";
       return { ...state, stages, activeTab };
     }
+    case "harvest-lens-done":
+      return { ...state, harvest: { ...state.harvest, lenses: [...state.harvest.lenses, { id: e.lensId, findings: e.findings, citations: e.citations }] } };
+    case "harvest-sources-done":
+      return { ...state, harvest: { ...state.harvest, sourcesFetched: e.fetched, sourcesTotal: e.total, domains: e.domains, independent: e.independent, degraded: e.degraded } };
+    case "harvest-price-done":
+      return { ...state, harvest: { ...state.harvest, skus: e.skus, priceBands: e.bands as any } };
+    case "intel-done":
+      return { ...state, intel: { confidence: e.confidence as string, grounded: e.grounded as boolean, attribution: e.attribution as number, segments: e.segments as number, competitors: e.competitors as number, degraded: e.degraded as boolean } };
     case "brand-spawned":
       return { ...state, brands: [...state.brands, { conceptId: e.conceptId, name: e.name, positioning: e.positioning }] };
     case "persona-decision": {

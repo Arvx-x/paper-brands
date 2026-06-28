@@ -108,6 +108,19 @@ main{padding:24px;width:100%;flex:1;display:flex;flex-direction:column}
 .conf-bar{height:6px;background:var(--tag-bg);border:1px solid var(--border-light);border-radius:3px;margin-top:6px;overflow:hidden}
 .conf-fill{height:6px;background:var(--good);border-radius:2px}
 
+/* ── HARVEST LIST ── */
+.hlist{display:flex;flex-direction:column;gap:0}
+.hrow{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border-light);font-size:13px}
+.hrow:last-child{border-bottom:0}
+.hrow.done .hstep{color:var(--good);font-size:15px;width:20px;flex-shrink:0}
+.hrow.active .hstep{color:var(--accent);font-size:15px;width:20px;flex-shrink:0}
+.hinfo{font-weight:600;min-width:180px}
+.hmeta{color:var(--mut);font-size:12px;flex:1}
+
+/* ── SPIN ANIMATION ── */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+
 /* ── ERROR ── */
 .err-banner{background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:14px 18px;color:#991b1b;margin-bottom:16px;font-weight:600}
 
@@ -133,6 +146,7 @@ main{padding:24px;width:100%;flex:1;display:flex;flex-direction:column}
 
 <!-- TABS -->
 <div class="tabs" id="tabs">
+  <span class="tab" data-tab="harvest">Harvest &amp; Intel</span>
   <span class="tab" data-tab="arena">Arena</span>
   <span class="tab" data-tab="creative">Creative</span>
   <span class="tab" data-tab="pages">Pages</span>
@@ -163,15 +177,32 @@ const pct = (v) => v != null ? (v * 100).toFixed(0) + "%" : "—";
 // ── STATUS PILL ──
 function statusClass(s) { return s === "running" ? "running" : s === "complete" ? "complete" : s === "error" ? "error" : ""; }
 
+// Which stage is actively running right now?
+function activeStage(s) {
+  const order = ["harvest","intel","council","cohort","arena","scoring","finalists","creative","pages"];
+  return order.find((st) => s.stages[st] === "active") ?? null;
+}
+
+function tabLabel(tab, s) {
+  const stageMap = { harvest: ["harvest","intel"], arena: ["council","cohort","arena","scoring"], creative: ["finalists","creative"], pages: ["pages"] };
+  const running = s.status === "running" && (stageMap[tab] ?? []).some((st) => s.stages[st] === "active");
+  const labels = { harvest: "Harvest &amp; Intel", arena: "Arena", creative: "Creative", pages: "Pages" };
+  return running ? `<span class="spin">⟳</span> ${labels[tab]}` : labels[tab];
+}
+
 function render(s) {
   const pill = $("status");
   pill.textContent = s.status === "running" ? "Running" + (s.category ? " · " + s.category : "") : s.status.charAt(0).toUpperCase() + s.status.slice(1);
   pill.className = "status-pill " + statusClass(s.status);
-  for (const t of document.querySelectorAll(".tab")) t.classList.toggle("active", t.dataset.tab === s.activeTab);
+  for (const t of document.querySelectorAll(".tab")) {
+    t.classList.toggle("active", t.dataset.tab === s.activeTab);
+    t.innerHTML = tabLabel(t.dataset.tab, s);
+  }
   const m = $("main");
   let html = "";
   if (s.error) html += `<div class="err-banner">⚠ Run error: ${esc(s.error)}</div>`;
-  if (s.activeTab === "arena") html += arenaHtml(s);
+  if (s.activeTab === "harvest") html += harvestHtml(s);
+  else if (s.activeTab === "arena") html += arenaHtml(s);
   else if (s.activeTab === "creative") html += creativeHtml(s);
   else html += pagesHtml(s);
   m.innerHTML = html;
@@ -179,6 +210,47 @@ function render(s) {
   for (const el of document.querySelectorAll(".fitem[data-idx]")) {
     el.onclick = () => { const f = s.feed[Number(el.dataset.idx)]; if (f) openModal(f); };
   }
+}
+
+// ── HARVEST + INTEL ──
+function harvestHtml(s) {
+  const h = s.harvest;
+  const intel = s.intel;
+  const hStage = s.stages["harvest"];
+  const iStage = s.stages["intel"];
+  const hRunning = hStage === "active";
+  const iRunning = iStage === "active";
+  const hDone = hStage === "done";
+  const iDone = iStage === "done";
+
+  // Lens rows
+  const totalLenses = 8; // expected
+  const lensRows = h.lenses.map((l) =>
+    `<div class="hrow done"><div class="hstep">✓</div><div class="hinfo"><b>${esc(l.id)}</b></div><div class="hmeta">${l.findings} findings · ${l.citations} citations</div></div>`
+  ).join("");
+  const pendingLenses = !hDone ? `<div class="hrow active"><div class="hstep spin">⟳</div><div class="hinfo">Researching lenses…</div><div class="hmeta">${h.lenses.length}/${totalLenses}</div></div>` : "";
+
+  // Sources row
+  const sourcesRow = h.sourcesFetched != null
+    ? `<div class="hrow done"><div class="hstep">✓</div><div class="hinfo"><b>Sources fetched</b></div><div class="hmeta">${h.sourcesFetched}/${h.sourcesTotal} · ${h.domains} domains (${h.independent} independent)</div></div>`
+    : (hRunning && h.lenses.length >= totalLenses ? `<div class="hrow active"><div class="hstep spin">⟳</div><div class="hinfo">Fetching source pages…</div><div class="hmeta"></div></div>` : "");
+
+  // Price row
+  const priceRow = h.skus != null
+    ? `<div class="hrow done"><div class="hstep">✓</div><div class="hinfo"><b>Price intel</b></div><div class="hmeta">${h.skus} SKUs · ${(h.priceBands ?? []).map((b) => `${esc(b.label)} ₹${b.min}–${b.max} (${b.share}%)`).join(" · ")}</div></div>`
+    : "";
+
+  // Intel row
+  const intelRow = iDone
+    ? `<div class="hrow done"><div class="hstep">✓</div><div class="hinfo"><b>Intel pack built</b></div><div class="hmeta">confidence: ${esc(intel.confidence ?? "—")} · attribution: ${intel.attribution ?? 0}% · ${intel.segments ?? 0} segments · ${intel.competitors ?? 0} competitors${intel.degraded ? " · ⚠ degraded" : ""}</div></div>`
+    : iRunning ? `<div class="hrow active"><div class="hstep spin">⟳</div><div class="hinfo"><b>Building intelligence pack…</b></div><div class="hmeta">grounding claims, building segments</div></div>` : "";
+
+  const isEmpty = hStage === "pending" && iStage === "pending";
+  const content = isEmpty
+    ? `<div class="empty"><div class="big">🔍</div><p>Hit Run to start harvesting research and building the intelligence pack for your category.</p></div>`
+    : `<div class="hlist">${lensRows}${pendingLenses}${sourcesRow}${priceRow}${intelRow}</div>`;
+
+  return `<div class="card grow">${content}</div>`;
 }
 
 // ── ARENA ──

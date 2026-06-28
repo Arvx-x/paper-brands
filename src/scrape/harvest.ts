@@ -15,6 +15,8 @@ export interface HarvestOptions {
   /** "auto" derives a category-tailored plan (default); "default" uses the generic one. */
   planMode?: "auto" | "default";
   outDir?: string;
+  /** Optional event callback for live UI streaming. Absent = no-op. */
+  onEvent?: (e: { type: string; [k: string]: unknown }) => void;
 }
 
 export interface LensFinding {
@@ -149,6 +151,7 @@ export async function harvest(opts: HarvestOptions): Promise<Corpus> {
       `  [${l.id}] ${findings.length} findings, ${coverage.citations} citations` +
         (coverage.failed ? ` (${coverage.failed}/${coverage.planned} queries failed)` : ""),
     );
+    opts.onEvent?.({ type: "harvest-lens-done", lensId: l.id, findings: findings.length, citations: coverage.citations });
     lensesEntries.push([l.id, findings]);
     perLens.push(coverage);
   });
@@ -180,6 +183,7 @@ export async function harvest(opts: HarvestOptions): Promise<Corpus> {
     );
 
   const [, price] = await Promise.all([Promise.all(work), pricePromise]);
+  opts.onEvent?.({ type: "harvest-price-done", skus: price.observations.length, bands: price.buckets.map((b) => ({ label: b.label, min: b.lowMinor / 100, max: b.highMinor / 100, share: Math.round(b.share * 100) })) });
 
   const lenses: Record<string, LensFinding[]> = {};
   for (const [id, f] of lensesEntries) lenses[id] = f;
@@ -197,6 +201,7 @@ export async function harvest(opts: HarvestOptions): Promise<Corpus> {
       `(${div.independentDomains} independent) | ` +
       Object.entries(div.byClass).map(([k, v]) => `${k}:${v}`).join(" "),
   );
+  opts.onEvent?.({ type: "harvest-sources-done", fetched: div.fetchedCount, total: sources.length, domains: div.distinctDomains, independent: div.independentDomains, degraded: false });
 
   // Negative evidence must come from RETURNED CONTENT / fetched text, not a
   // planned query string — else a positivity-biased corpus would falsely claim it.

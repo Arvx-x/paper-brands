@@ -61,6 +61,7 @@ export interface EvidenceSource {
 export async function buildCategoryPack(
   brief: CategoryBrief,
   llm = new LLMClient(),
+  onEvent?: (e: { type: string; [k: string]: unknown }) => void,
 ): Promise<CategoryPack> {
   const raw = await llm.completeJson<Record<string, unknown>>({
     // Strategy-grade model for the pack; this runs once per category.
@@ -314,10 +315,11 @@ export async function buildCategoryPack(
     attributedItems,
     totalItems,
     independentItems,
-    verifierModel: haveSources ? verifierModel : undefined,
-    confidence: haveSources ? minConfidence(base.confidence, attrConf) : base.confidence,
-  };
-  return pack;
+     verifierModel: haveSources ? verifierModel : undefined,
+     confidence: haveSources ? minConfidence(base.confidence, attrConf) : base.confidence,
+   };
+   onEvent?.({ type: "intel-done", confidence: pack.provenance.confidence, grounded: pack.provenance.grounded, attribution: Math.round(attributionRate * 100), segments: pack.buyerSegments?.length ?? 0, competitors: pack.competitorArchetypes?.length ?? 0, degraded: pack.provenance.degraded });
+   return pack;
 }
 
 /**

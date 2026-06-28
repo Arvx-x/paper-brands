@@ -1,11 +1,17 @@
 export interface BaseEvent { seq: number; ts: string; }
 
 export type Stage =
-  | "council" | "cohort" | "arena" | "scoring" | "finalists" | "creative" | "pages";
+  | "harvest" | "intel" | "council" | "cohort" | "arena" | "scoring" | "finalists" | "creative" | "pages";
 
 export type PipelineEvent =
   | (BaseEvent & { type: "run-started"; category: string })
   | (BaseEvent & { type: "stage"; stage: Stage; status: "start" | "done"; note?: string })
+  // Harvest events
+  | (BaseEvent & { type: "harvest-lens-done"; lensId: string; findings: number; citations: number })
+  | (BaseEvent & { type: "harvest-sources-done"; fetched: number; total: number; domains: number; independent: number; degraded: boolean })
+  | (BaseEvent & { type: "harvest-price-done"; skus: number; bands: { label: string; min: number; max: number; share: number }[] })
+  // Intel events
+  | (BaseEvent & { type: "intel-done"; confidence: string; grounded: boolean; attribution: number; segments: number; competitors: number; degraded: boolean })
   | (BaseEvent & { type: "brand-spawned"; conceptId: string; name: string; positioning: string })
   | (BaseEvent & { type: "persona-decision";
       personaId: string; segment: string; pickedConceptId: string; pickedLabel: string;
