@@ -66,9 +66,12 @@ export async function runFoundryPipeline(
       : { pack: builtPack, applied: [] as string[] };
     // Stamp honesty fields onto provenance.
     if (pack.provenance) {
-      pack.provenance.userVoices = userIntel?.voices.length ?? 0;
-      pack.provenance.userSkus = userIntel?.skus.length ?? 0;
-      pack.provenance.overridesApplied = applied;
+      pack.provenance = {
+        ...pack.provenance,
+        userVoices: userIntel?.voices.length ?? 0,
+        userSkus: userIntel?.skus.length ?? 0,
+        overridesApplied: applied,
+      };
     }
     const packPath = await savePack(pack);
     onEvent({ type: "stage", stage: "intel", status: "done", note: packPath });

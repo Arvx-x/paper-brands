@@ -46,3 +46,36 @@ test("with userIntel: voices appear as first-party sources and SKUs are present"
   expect(srcs.some((s: any) => s.sourceClass === "first-party" && s.rawText.includes("melts"))).toBe(true);
   expect((cap.brief.observations ?? []).some((o: any) => o.brand === "Acme")).toBe(true);
 });
+
+test("provenance stamping does not mutate builtPack provenance (shallow-spread safety)", async () => {
+  const cap: { brief?: any; returnedPack?: any } = {};
+  const intel: UserIntel = {
+    voices: [{ quote: "test", kind: "unmet", source: "survey", independent: true }],
+    skus: [],
+    competitors: [],
+    overrides: { currency: "USD" },
+    summary: { voices: 1, skus: 0, competitors: 0, overrides: ["currency"] },
+  };
+  // Capture the pack returned by buildCategoryPack (builtPack) to check it's not mutated.
+  const deps = {
+    ...fakeDeps(cap),
+    buildCategoryPack: async (brief: any) => {
+      cap.brief = brief;
+      const pack = {
+        id: "c", name: "C", currency: "INR", geography: "India",
+        unmetNeeds: [], wellMetNeeds: [], purchaseTriggers: [], rejectionReasons: [],
+        priceBands: [{ label: "core", lowMinor: 10000, highMinor: 40000 }],
+        competitorArchetypes: [], complianceNotes: [],
+        buyerSegments: [{ seed: "a", weight: 1, basis: "" }],
+        groundedGrievances: [], benchmarkBrands: [], benchmarkKnownUnknowns: [],
+        personaGroundingKnownUnknowns: [], benchmarksDegraded: true,
+        provenance: { confidence: "low", userVoices: 0, userSkus: 0, overridesApplied: [] },
+      };
+      cap.returnedPack = pack;
+      return pack as any;
+    },
+  };
+  await runFoundryPipeline("c", () => {}, deps, 80, intel);
+  // builtPack.provenance should NOT have been mutated — still 0 from construction
+  expect(cap.returnedPack.provenance.userVoices).toBe(0);
+});
