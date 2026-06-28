@@ -20,6 +20,7 @@
     "calibrate:status": "bun run src/cli.ts calibrate-status",
     "smoketest:build": "bun run src/cli.ts smoketest-build",
     "smoketest:import": "bun run src/cli.ts smoketest-import",
+    "foundry": "bun run src/cli.ts foundry",
     "test": "bun test"
   },
   "dependencies": {

@@ -1,4 +1,5 @@
 import { runTournament, runOptimize, formatReport } from "./pipeline/tournament.ts";
+import { runFoundry } from "./pipeline/foundry.ts";
 import { buildCategoryPack, savePack } from "./intel/market.ts";
 import { harvest, corpusToEvidence, corpusProvenance, type Corpus } from "./scrape/harvest.ts";
 import { clusterCompetitors } from "./scrape/prices.ts";
@@ -62,6 +63,31 @@ if (providerOverride) process.env.PB_DEFAULT_PROVIDER = providerOverride;
 const cmd = process.argv[2];
 
 switch (cmd) {
+  case "foundry": {
+    const artifact = await runFoundry({
+      categoryId: arg("category", "lipcare")!,
+      candidates: Number(arg("candidates", "8")),
+      finalists: Number(arg("finalists", "3")),
+      cohortSize: Number(arg("cohort", "80")),
+      seed: Number(arg("seed", "0")),
+      outDir: arg("out", "out"),
+    });
+    console.log(
+      `\nFoundry: ${artifact.categoryId} — spawned ${artifact.spawned}, advanced ${artifact.selected} (ranked by ${artifact.rankedBy})`,
+    );
+    for (const f of artifact.finalists) {
+      const moat = f.moat ? `moat ${f.moat.overall.toFixed(2)}` : "moat n/a";
+      console.log(
+        `  ${f.rank}. ${f.concept.name.padEnd(20)} win-rate ${(f.winRate * 100).toFixed(1)}% ` +
+          `[${(f.winRateCiLow * 100).toFixed(0)}-${(f.winRateCiHigh * 100).toFixed(0)}%]  ${moat}`,
+      );
+    }
+    for (const w of artifact.warnings) console.log(`\u26a0 ${w}`);
+    console.log(`Wrote ${arg("out", "out")}/finalists.json`);
+    console.log(`Next: build landing pages for these ${artifact.selected} (creative step)`);
+    break;
+  }
+
   case "tournament": {
     const out = await runTournament({
       categoryId: arg("category", "lipcare")!,
@@ -504,6 +530,7 @@ switch (cmd) {
         `Usage:\n` +
         `  bun run intel       --category="..." --geo="..." --currency=INR\n` +
         `  bun run tournament  --category=lipcare --candidates=4 --cohort=40 --out=out [--mode=cheap|deep] [--moat]\n` +
+        `  bun run foundry     --category=lipcare --candidates=8 --finalists=3 --cohort=80\n` +
         `  bun run winrate     --category=lipcare --candidates=4 --cohort=40\n` +
         `  bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5\n` +
         `  bun run creative    --category=lipcare --assets=ad-square,ad-story --research --rounds=3\n` +
