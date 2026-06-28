@@ -19,6 +19,13 @@ export function voicesToSources(voices: UserVoice[]): EvidenceSource[] {
   }));
 }
 
+/**
+ * Map user-supplied SKU rows to PriceObservation (the harvest contract).
+ * Fields present on UserSku but absent from PriceObservation — tier, unitsSold,
+ * marginPct — are NOT copied here. They stay on the original UserSku row and will
+ * be accessible to future pipeline steps that extend PriceObservation or read
+ * UserIntel directly.
+ */
 export function skusToObservations(skus: UserSku[]): PriceObservation[] {
   return skus.map((s) => ({
     brand: s.brand,

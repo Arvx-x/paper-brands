@@ -1,6 +1,6 @@
 // src/userdata/types.test.ts
 import { test, expect } from "bun:test";
-import { UserVoiceSchema, UserSkuSchema, UserOverridesSchema } from "./types.ts";
+import { UserVoiceSchema, UserSkuSchema, UserOverridesSchema, UserCompetitorSchema } from "./types.ts";
 
 test("UserVoiceSchema requires quote/kind/source and defaults independent=true", () => {
   const v = UserVoiceSchema.parse({ quote: "melts in my bag", kind: "rejection", source: "NPS" });
@@ -21,4 +21,11 @@ test("UserSkuSchema requires brand/product/price as a finite number", () => {
 test("UserOverridesSchema parses optional fields", () => {
   const o = UserOverridesSchema.parse({ currency: "INR" });
   expect(o.currency).toBe("INR");
+});
+
+test("UserCompetitorSchema requires name and defaults arrays", () => {
+  const c = UserCompetitorSchema.parse({ name: "RivalCo" });
+  expect(c.claims).toEqual([]);
+  expect(c.strengths).toEqual([]);
+  expect(() => UserCompetitorSchema.parse({ pricePositioning: "premium" })).toThrow();
 });

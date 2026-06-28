@@ -26,7 +26,6 @@ test("finalUrl is unique per voice", () => {
   expect(new Set(s.map((x) => x.finalUrl)).size).toBe(2);
 });
 
-// append to src/userdata/merge.test.ts
 import { skusToObservations, mergeObservations } from "./merge.ts";
 import type { UserSku } from "./types.ts";
 import type { PriceObservation } from "../scrape/prices.ts";
@@ -60,7 +59,6 @@ test("mergeObservations is identity when user obs empty", () => {
   expect(merged).toEqual(harvested);
 });
 
-// append to src/userdata/merge.test.ts
 import { applyOverrides, competitorsToHints, summarize } from "./merge.ts";
 import type { CategoryPack } from "../categories/types.ts";
 import type { UserCompetitor, UserOverrides } from "./types.ts";
@@ -124,4 +122,25 @@ test("summarize counts each section and lists applied override fields", () => {
   } as any);
   expect(s.voices).toBe(1);
   expect(s.overrides).toEqual(["currency"]);
+});
+
+test("competitorsToHints renders all fields when present", () => {
+  const comps: UserCompetitor[] = [
+    { name: "BrandA", pricePositioning: "premium", claims: ["long-lasting", "SPF 30"], strengths: ["distribution"], weaknesses: ["price"] },
+  ];
+  const hint = competitorsToHints(comps);
+  expect(hint).toContain("claims: long-lasting; SPF 30");
+  expect(hint).toContain("strengths: distribution");
+  expect(hint).toContain("weaknesses: price");
+});
+
+test("competitorsToHints omits empty optional sections", () => {
+  const comps: UserCompetitor[] = [
+    { name: "BrandB", claims: [], strengths: [], weaknesses: [] },
+  ];
+  const hint = competitorsToHints(comps);
+  expect(hint).toContain("BrandB");
+  // No parenthetical section on the competitor line when all optional fields are empty
+  const competitorLine = hint.split("\n").find((l) => l.includes("BrandB"))!;
+  expect(competitorLine).not.toContain("(");
 });
