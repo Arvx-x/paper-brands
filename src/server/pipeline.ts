@@ -76,6 +76,14 @@ export async function runFoundryPipeline(
         skuConflicts,
       };
     }
+    // Surface user-data provenance to the UI (only when a workbook was supplied).
+    if (userIntel) {
+      onEvent({ type: "intel-userdata",
+        userVoices: userIntel.voices.length,
+        userSkus: userIntel.skus.length,
+        skuConflicts,
+        overridesApplied: applied });
+    }
     const packPath = await savePack(pack);
     onEvent({ type: "stage", stage: "intel", status: "done", note: packPath });
 

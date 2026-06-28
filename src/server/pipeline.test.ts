@@ -80,6 +80,30 @@ test("provenance stamping does not mutate builtPack provenance (shallow-spread s
   expect(cap.returnedPack.provenance.userVoices).toBe(0);
 });
 
+test("emits intel-userdata with provenance counts when userIntel present", async () => {
+  const cap: { brief?: any } = {};
+  const events: any[] = [];
+  const intel: UserIntel = {
+    voices: [{ quote: "melts in my bag every summer", kind: "rejection", source: "NPS", independent: true }],
+    skus: [{ brand: "Acme", product: "Balm", price: 199 }],
+    competitors: [], overrides: { currency: "USD" },
+    summary: { voices: 1, skus: 1, competitors: 0, overrides: ["currency"] },
+  };
+  await runFoundryPipeline("c", (e) => events.push(e), fakeDeps(cap), 80, intel);
+  const ud = events.find((e) => e.type === "intel-userdata");
+  expect(ud).toBeDefined();
+  expect(ud.userVoices).toBe(1);
+  expect(ud.userSkus).toBe(1);
+  expect(ud.overridesApplied).toEqual(["currency"]);
+});
+
+test("does NOT emit intel-userdata when no userIntel", async () => {
+  const cap: { brief?: any } = {};
+  const events: any[] = [];
+  await runFoundryPipeline("c", (e) => events.push(e), fakeDeps(cap), 80);
+  expect(events.some((e) => e.type === "intel-userdata")).toBe(false);
+});
+
 test("harvest throwing emits run-error event", async () => {
   const events: any[] = [];
   const deps = {
