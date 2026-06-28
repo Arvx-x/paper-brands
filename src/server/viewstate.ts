@@ -77,7 +77,7 @@ export function reduce(state: ViewState, e: PipelineEvent): ViewState {
     case "intel-done":
       return { ...state, intel: { confidence: e.confidence as string, grounded: e.grounded as boolean, attribution: e.attribution as number, segments: e.segments as number, competitors: e.competitors as number, degraded: e.degraded as boolean } };
     case "brand-spawned":
-      return { ...state, brands: [...state.brands, { conceptId: e.conceptId, name: e.name, positioning: e.positioning }] };
+      return { ...state, activeTab: "arena", brands: [...state.brands, { conceptId: e.conceptId, name: e.name, positioning: e.positioning }] };
     case "persona-decision": {
       const feed = [{ personaId: e.personaId, segment: e.segment, pickedLabel: e.pickedLabel,
         pickedConceptId: e.pickedConceptId, reason: e.reason, topObjection: e.topObjection,

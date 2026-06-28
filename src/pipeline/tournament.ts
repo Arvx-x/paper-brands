@@ -85,6 +85,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   const pack = await resolvePack(opts.categoryId);
 
   console.error(`[1/4] Council generating ${opts.candidates} candidate brands...`);
+  opts.onEvent?.({ type: "stage", stage: "council", status: "start" });
   const council = new Council(pack);
   const { concepts, diversity: conceptDiversity } = await council.generateCandidates(opts.candidates, opts.seed);
   if (concepts.length === 0) throw new Error("Council produced no valid concepts.");
@@ -93,6 +94,7 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   for (const c of concepts) opts.onEvent?.({ type: "brand-spawned", conceptId: c.id, name: c.name, positioning: c.positioning });
 
   console.error(`[2/4] Building representative cohort of ${opts.cohortSize}...`);
+  opts.onEvent?.({ type: "stage", stage: "cohort", status: "start" });
   const { personas: cohort, groundingCoverage, cohortDiversity } = await buildCohort(pack, opts.cohortSize);
   console.error(`      -> ${cohort.length} buyer agents`);
   opts.onEvent?.({ type: "stage", stage: "cohort", status: "done", note: `${cohort.length} agents` });
