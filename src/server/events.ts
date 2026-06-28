@@ -12,6 +12,7 @@ export type PipelineEvent =
   | (BaseEvent & { type: "harvest-price-done"; skus: number; bands: { label: string; min: number; max: number; share: number }[] })
   // Intel events
   | (BaseEvent & { type: "intel-done"; confidence: string; grounded: boolean; attribution: number; segments: number; competitors: number; degraded: boolean })
+  | (BaseEvent & { type: "intel-userdata"; userVoices: number; userSkus: number; skuConflicts: number; overridesApplied: string[] })
   | (BaseEvent & { type: "brand-spawned"; conceptId: string; name: string; positioning: string })
   | (BaseEvent & { type: "persona-decision";
       personaId: string; segment: string; pickedConceptId: string; pickedLabel: string;
