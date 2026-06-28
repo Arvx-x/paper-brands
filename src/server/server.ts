@@ -5,11 +5,13 @@ import { runFoundryPipeline as realRunFoundryPipeline } from "./pipeline.ts";
 export interface ServerDeps {
   runFoundryPipeline?: typeof realRunFoundryPipeline;
   outRoot?: string;
+  uiRoot?: string;
 }
 
 export function makeHandler(deps: ServerDeps = {}) {
   const runFoundryPipeline = deps.runFoundryPipeline ?? realRunFoundryPipeline;
   const outRoot = resolve(deps.outRoot ?? "out");
+  const uiRoot = resolve(deps.uiRoot ?? "public");
   const broadcaster = new RunBroadcaster();
 
   return async function handler(req: Request): Promise<Response> {
@@ -27,6 +29,19 @@ export function makeHandler(deps: ServerDeps = {}) {
       !path.startsWith("/out/")
     ) {
       return new Response("forbidden", { status: 403 });
+    }
+
+    if (req.method === "GET" && (path === "/" || path === "/index.html")) {
+      const f = Bun.file(resolve(uiRoot, "index.html"));
+      if (await f.exists()) return new Response(f, { headers: { "content-type": "text/html" } });
+      return new Response("UI not built", { status: 404 });
+    }
+
+    if (req.method === "GET" && path === "/viewstate.js") {
+      const built = await Bun.build({ entrypoints: [resolve("src/server/viewstate.ts")], target: "browser" });
+      const js = built.success ? await built.outputs[0]?.text() : undefined;
+      if (js) return new Response(js, { headers: { "content-type": "text/javascript" } });
+      return new Response("// viewstate build failed", { status: 500 });
     }
 
     if (req.method === "POST" && path === "/api/run") {

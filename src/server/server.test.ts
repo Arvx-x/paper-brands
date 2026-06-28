@@ -1,5 +1,8 @@
 import { test, expect } from "bun:test";
 import { makeHandler } from "./server.ts";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function handlerWithFakeRun() {
   const fakePipeline = async (_cat: string, onEvent: any) => {
@@ -36,4 +39,31 @@ test("unknown route -> 404", async () => {
   const { handler } = handlerWithFakeRun();
   const res = await handler(new Request("http://x/nope"));
   expect(res.status).toBe(404);
+});
+
+test("GET / serves index.html from uiRoot", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ui-"));
+  await writeFile(join(dir, "index.html"), "<html><body>playground</body></html>");
+  const handler = makeHandler({ uiRoot: dir } as any);
+  const res = await handler(new Request("http://x/"));
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("text/html");
+  expect(await res.text()).toContain("playground");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("GET / -> 404 when index.html missing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ui-"));
+  const handler = makeHandler({ uiRoot: dir } as any);
+  const res = await handler(new Request("http://x/"));
+  expect(res.status).toBe(404);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("GET /viewstate.js returns transpiled JS containing reduce", async () => {
+  const handler = makeHandler({});
+  const res = await handler(new Request("http://x/viewstate.js"));
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("javascript");
+  expect(await res.text()).toContain("reduce");
 });
