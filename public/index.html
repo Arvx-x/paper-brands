@@ -31,6 +31,11 @@ main{padding:0 20px 40px}
 <body>
 <div class="bar">
   <input id="cat" placeholder="category, e.g. lip-balm-india" value="lip-balm-india">
+  <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);white-space:nowrap">
+    Cohort
+    <input id="cohort" type="range" min="20" max="120" step="20" value="80" style="width:90px;accent-color:var(--accent)">
+    <span id="cohort-val" style="min-width:26px;color:var(--ink)">80</span>
+  </label>
   <button id="run">Run</button>
   <span class="pill" id="status">idle</span>
 </div>
@@ -86,8 +91,11 @@ function pagesHtml(s) {
 
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => { state = { ...state, activeTab: t.dataset.tab }; render(state); };
 
+$("cohort").oninput = () => { $("cohort-val").textContent = $("cohort").value; };
+
 $("run").onclick = async () => {
-  const r = await fetch("/api/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: $("cat").value }) });
+  const cohortSize = Number($("cohort").value) || 80;
+  const r = await fetch("/api/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: $("cat").value, cohortSize }) });
   if (r.status === 409) { $("status").textContent = "a run is already active"; }
 };
 

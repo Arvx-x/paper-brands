@@ -50,9 +50,10 @@ export function makeHandler(deps: ServerDeps = {}) {
         return Response.json({ error: "a run is already active" }, { status: 409 });
       }
       let category = "lipcare";
-      try { category = ((await req.json()) as any).category ?? category; } catch { /* default */ }
+      let cohortSize = 80;
+      try { const body = (await req.json()) as any; category = body.category ?? category; cohortSize = Number(body.cohortSize ?? cohortSize) || 80; } catch { /* defaults */ }
       broadcaster.setRunning(category);
-      runFoundryPipeline(category, (e) => broadcaster.emit(e))
+      runFoundryPipeline(category, (e) => broadcaster.emit(e), {}, cohortSize)
         .then(() => broadcaster.setStatus("complete"))
         .catch((e) => {
           broadcaster.emit({ type: "run-error", message: (e as Error).message });
