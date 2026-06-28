@@ -18,6 +18,7 @@ import { calibrate, composeEquity } from "./calibration/calibrate.ts";
 import type { CalibrationObservation } from "./calibration/types.ts";
 import { buildExperiment } from "./smoketest/experiment.ts";
 import { runLaunchpages } from "./launchpages/run.ts";
+import { startServer } from "./server/server.ts";
 import { writeExperiment, readExperiment } from "./smoketest/write.ts";
 import { parseResultsCsv } from "./smoketest/results.ts";
 
@@ -525,6 +526,11 @@ switch (cmd) {
     break;
   }
 
+  case "serve": {
+    startServer(Number(arg("port", "4317")));
+    break;
+  }
+
   case "launchpages": {
     const res = await runLaunchpages({
       finalistsPath: arg("finalists", "out/finalists.json"),
@@ -550,6 +556,7 @@ switch (cmd) {
         `  bun run tournament  --category=lipcare --candidates=4 --cohort=40 --out=out [--mode=cheap|deep] [--moat]\n` +
         `  bun run foundry     --category=lipcare --candidates=8 --finalists=3 --cohort=80\n` +
         `  bun run launchpages --finalists=out/finalists.json --out=out/launchpages\n` +
+        `  bun run serve       [--port=4317]\n` +
         `  bun run winrate     --category=lipcare --candidates=4 --cohort=40\n` +
         `  bun run optimize    --category=lipcare --candidates=3 --cohort=20 --rounds=5\n` +
         `  bun run creative    --category=lipcare --assets=ad-square,ad-story --research --rounds=3\n` +

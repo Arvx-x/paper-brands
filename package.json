@@ -22,6 +22,7 @@
     "smoketest:import": "bun run src/cli.ts smoketest-import",
     "foundry": "bun run src/cli.ts foundry",
     "launchpages": "bun run src/cli.ts launchpages",
+    "serve": "bun run src/cli.ts serve",
     "test": "bun test"
   },
   "dependencies": {
