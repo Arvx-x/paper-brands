@@ -54,3 +54,56 @@ export function mergeObservations(
   });
   return { merged: [...keptHarvested, ...user], conflicts };
 }
+
+/** Re-normalize segment weights to sum ~1.0 (whole-percent, matches intel.ts). */
+function normalizeWeights<T extends { weight: number }>(segs: T[]): T[] {
+  const total = segs.reduce((a, s) => a + (s.weight || 0), 0);
+  if (total <= 0) return segs.map((s) => ({ ...s, weight: Math.round(100 / segs.length) / 100 }));
+  return segs.map((s) => ({ ...s, weight: Math.round((s.weight / total) * 100) / 100 }));
+}
+
+/**
+ * Apply hard user overrides to a built pack. Returns a NEW pack (no mutation) and
+ * the list of fields actually changed, recorded in provenance. priceBands override
+ * is the highest authority — it wins over harvested/recomputed bands.
+ */
+export function applyOverrides(
+  pack: CategoryPack,
+  ov: UserOverrides,
+): { pack: CategoryPack; applied: string[] } {
+  const applied: string[] = [];
+  const next: CategoryPack = { ...pack };
+  if (ov.priceBands && ov.priceBands.length) { next.priceBands = ov.priceBands; applied.push("priceBands"); }
+  if (ov.buyerSegments && ov.buyerSegments.length) {
+    next.buyerSegments = normalizeWeights(ov.buyerSegments.map((s) => ({ seed: s.seed, weight: s.weight, basis: "user-provided override" })));
+    applied.push("buyerSegments");
+  }
+  if (ov.currency) { next.currency = ov.currency; applied.push("currency"); }
+  return { pack: next, applied };
+}
+
+/** Compact grounding text for the brief. Real names allowed here (archetypes stay
+ * disguised by the existing prompt rules); empty input => empty string. */
+export function competitorsToHints(comps: UserCompetitor[]): string {
+  if (!comps.length) return "";
+  return (
+    "USER-PROVIDED COMPETITORS (real, for grounding only — keep archetypes disguised):\n" +
+    comps
+      .map((c) => {
+        const bits = [c.pricePositioning ? `positioning: ${c.pricePositioning}` : "",
+          c.claims.length ? `claims: ${c.claims.join("; ")}` : "",
+          c.strengths.length ? `strengths: ${c.strengths.join("; ")}` : "",
+          c.weaknesses.length ? `weaknesses: ${c.weaknesses.join("; ")}` : ""].filter(Boolean).join(" | ");
+        return `- ${c.name}${bits ? " (" + bits + ")" : ""}`;
+      })
+      .join("\n")
+  );
+}
+
+export function summarize(intel: Omit<UserIntel, "summary">): UserIntel["summary"] {
+  const overrides: string[] = [];
+  if (intel.overrides.priceBands?.length) overrides.push("priceBands");
+  if (intel.overrides.buyerSegments?.length) overrides.push("buyerSegments");
+  if (intel.overrides.currency) overrides.push("currency");
+  return { voices: intel.voices.length, skus: intel.skus.length, competitors: intel.competitors.length, overrides };
+}

@@ -59,3 +59,69 @@ test("mergeObservations is identity when user obs empty", () => {
   const { merged } = mergeObservations(harvested, []);
   expect(merged).toEqual(harvested);
 });
+
+// append to src/userdata/merge.test.ts
+import { applyOverrides, competitorsToHints, summarize } from "./merge.ts";
+import type { CategoryPack } from "../categories/types.ts";
+import type { UserCompetitor, UserOverrides } from "./types.ts";
+
+function basePack(): CategoryPack {
+  return {
+    id: "cat", name: "Cat", currency: "USD", geography: "X",
+    unmetNeeds: [], wellMetNeeds: [], purchaseTriggers: [], rejectionReasons: [],
+    priceBands: [{ label: "core", lowMinor: 10000, highMinor: 40000 }],
+    competitorArchetypes: [], complianceNotes: [],
+    buyerSegments: [{ seed: "a", weight: 0.5, basis: "" }, { seed: "b", weight: 0.5, basis: "" }],
+    groundedGrievances: [], benchmarkBrands: [], benchmarkKnownUnknowns: [],
+    personaGroundingKnownUnknowns: [], benchmarksDegraded: true,
+  } as unknown as CategoryPack;
+}
+
+test("applyOverrides replaces priceBands/currency and re-normalizes buyerSegments", () => {
+  const ov: UserOverrides = {
+    priceBands: [{ label: "v", lowMinor: 0, highMinor: 15000 }],
+    buyerSegments: [{ seed: "x", weight: 2 }, { seed: "y", weight: 2 }],
+    currency: "INR",
+  };
+  const { pack, applied } = applyOverrides(basePack(), ov);
+  expect(pack.currency).toBe("INR");
+  expect(pack.priceBands).toHaveLength(1);
+  expect(pack.buyerSegments[0]!.weight).toBe(0.5); // 2/4 normalized
+  expect(applied.sort()).toEqual(["buyerSegments", "currency", "priceBands"]);
+});
+
+test("applyOverrides is identity (no applied fields) when overrides empty", () => {
+  const before = basePack();
+  const { pack, applied } = applyOverrides(before, {});
+  expect(applied).toEqual([]);
+  expect(pack.currency).toBe("USD");
+  expect(pack.priceBands).toEqual(before.priceBands);
+});
+
+test("applyOverrides does not mutate the input pack", () => {
+  const before = basePack();
+  applyOverrides(before, { currency: "INR" });
+  expect(before.currency).toBe("USD");
+});
+
+test("competitorsToHints renders names + positioning", () => {
+  const comps: UserCompetitor[] = [
+    { name: "BrandA", pricePositioning: "premium", claims: ["long-lasting"], strengths: ["distribution"], weaknesses: ["price"] },
+  ];
+  const hint = competitorsToHints(comps);
+  expect(hint).toContain("BrandA");
+  expect(hint).toContain("premium");
+});
+
+test("competitorsToHints returns empty string for no competitors", () => {
+  expect(competitorsToHints([])).toBe("");
+});
+
+test("summarize counts each section and lists applied override fields", () => {
+  const s = summarize({
+    voices: [{ quote: "q", kind: "praise", source: "s", independent: true }],
+    skus: [], competitors: [], overrides: { currency: "INR" },
+  } as any);
+  expect(s.voices).toBe(1);
+  expect(s.overrides).toEqual(["currency"]);
+});
