@@ -2,11 +2,25 @@ import type { BrandConcept } from "../brand/types.ts";
 import type { Persona } from "../personas/cohort.ts";
 import type { CategoryPack } from "../categories/types.ts";
 
+/** Emitted per-persona by arenas that support it. Structurally matches MatchResult's observable fields. */
+export interface ArenaPersonaEvent {
+  personaId: string;
+  segment: string;
+  pickedConceptId: string;
+  pickedLabel: string;
+  reason: string;
+  topObjection: string;
+  confidence?: number;
+  willingnessToPayMinor: number;
+  abstained?: boolean;
+  errored?: boolean;
+}
+
 export interface ArenaInput {
   candidates: BrandConcept[];
   cohort: Persona[];
   pack: CategoryPack;
-  opts?: { includeCompetitors?: boolean; seed?: number };
+  opts?: { includeCompetitors?: boolean; seed?: number; onEvent?: (e: ArenaPersonaEvent) => void };
 }
 
 export interface MatchResult {

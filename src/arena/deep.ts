@@ -55,6 +55,7 @@ export class DeepNegotiationArena implements BuyerArena {
     const includeCompetitors = input.opts?.includeCompetitors ?? true;
     const seed = String(input.opts?.seed ?? 0);
     const results: MatchResult[] = [];
+    const onEvent = input.opts?.onEvent;
 
     await pool(input.cohort, this.concurrency, async (persona) => {
       const traits = { ...deriveTraits(persona, pack, seed), name: persona.name };
@@ -109,23 +110,27 @@ export class DeepNegotiationArena implements BuyerArena {
 
       if (!best) {
         const allErrored = erroredCount === slate.length;
-        results.push({
+        const result: MatchResult = {
           personaId: persona.id, segment: persona.segment, pickedConceptId: "",
           pickedLabel: "", willingnessToPayMinor: 0, reason: "", topObjection: "",
           abstained: !allErrored,   // queried but nothing affordable
           errored: allErrored,      // every option failed
           perOptionWtpMinor,
-        });
+        };
+        results.push(result);
+        onEvent?.(result);
         return;
       }
 
-      results.push({
+      const result: MatchResult = {
         personaId: persona.id, segment: persona.segment,
         pickedConceptId: best.entry.conceptId, pickedLabel: best.entry.card.label,
         willingnessToPayMinor: best.wtp, reason: `conviction ${best.conviction.toFixed(2)}`,
         topObjection: best.objection, confidence: best.conviction,
         perOptionWtpMinor, turnsToDecision: best.turns,
-      });
+      };
+      results.push(result);
+      onEvent?.(result);
     });
 
     return results;
