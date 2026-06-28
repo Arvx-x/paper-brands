@@ -93,6 +93,8 @@ export const ProvenanceSchema = z.object({
   userSkus: z.number().default(0),
   /** Pack fields the user hard-overrode (e.g. ["priceBands","currency"]). */
   overridesApplied: z.array(z.string()).default([]),
+  /** SKU observations from the user upload that displaced a harvested observation (user wins on conflict). */
+  skuConflicts: z.number().default(0),
   confidence: z.enum(["low", "medium", "high"]).default("low"),
 });
 export type Provenance = z.infer<typeof ProvenanceSchema>;

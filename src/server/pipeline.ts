@@ -48,9 +48,11 @@ export async function runFoundryPipeline(
       ? [...voicesToSources(userIntel.voices), ...harvestedSources]
       : harvestedSources;
     // User SKUs merged into observations (user wins on conflict).
-    const { merged: observations } = userIntel?.skus.length
+    const mergeResult = userIntel?.skus.length
       ? mergeObservations(corpus.price.observations, skusToObservations(userIntel.skus))
-      : { merged: corpus.price.observations };
+      : { merged: corpus.price.observations, conflicts: 0 };
+    const observations = mergeResult.merged;
+    const skuConflicts = mergeResult.conflicts;
     const priceBands = corpus.price.bands.length ? corpus.price.bands : undefined;
     const competitorClusters = clusterCompetitors(observations, corpus.price.buckets);
     const provenance = corpusProvenance(corpus, { truncated: ev.truncated, model: loadConfig().model });
@@ -71,6 +73,7 @@ export async function runFoundryPipeline(
         userVoices: userIntel?.voices.length ?? 0,
         userSkus: userIntel?.skus.length ?? 0,
         overridesApplied: applied,
+        skuConflicts,
       };
     }
     const packPath = await savePack(pack);

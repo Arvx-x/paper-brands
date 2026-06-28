@@ -315,6 +315,7 @@ export function corpusProvenance(
     userVoices: 0,
     userSkus: 0,
     overridesApplied: [],
+    skuConflicts: 0,
     confidence,
   };
 }

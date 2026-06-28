@@ -79,3 +79,16 @@ test("provenance stamping does not mutate builtPack provenance (shallow-spread s
   // builtPack.provenance should NOT have been mutated — still 0 from construction
   expect(cap.returnedPack.provenance.userVoices).toBe(0);
 });
+
+test("harvest throwing emits run-error event", async () => {
+  const events: any[] = [];
+  const deps = {
+    harvest: async () => { throw new Error("harvest failed"); },
+    buildCategoryPack: async () => { throw new Error("should not reach"); },
+    runFoundry: async () => ({ finalists: [] }) as any,
+    runLaunchpages: async () => ({ built: [] }) as any,
+  };
+  await runFoundryPipeline("c", (e) => events.push(e), deps as any, 80);
+  expect(events.some((e) => e.type === "run-error" && e.message.includes("harvest failed"))).toBe(true);
+  expect(events.some((e) => e.type === "run-complete")).toBe(false);
+});
