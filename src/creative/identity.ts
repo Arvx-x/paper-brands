@@ -16,6 +16,33 @@ export interface IdentityResult {
 function identitySpec(kit: BrandKit, kind: "logo" | "packaging"): CreativeSpec {
   const direction = kind === "logo" ? kit.logoDirection : kit.packagingDirection;
   const aspect = kind === "logo" ? "1:1" : "4:5";
+  const palette = (kit.palette ?? []).map((p) => `${p.name} ${p.hex} (${p.role})`).join(", ");
+  const mood = (kit.moodKeywords ?? []).join(", ");
+
+  // Fill the rich art-direction `direction` map so identity assets go through the
+  // same world-class prompt path as council creatives — not a thin generic brief.
+  // This is what lifts packaging from "generic mockup" to a designed, on-shelf hero.
+  const dir =
+    kind === "logo"
+      ? {
+          subject: `the primary "${kit.brandName}" wordmark/logomark as a clean vector-style mark`,
+          composition: "single centered mark, generous even margins, perfectly balanced, scalable to a favicon",
+          colorGrade: `brand palette only (${palette || "neutral"}); flat, no gradients unless the brand demands it`,
+          texture: "crisp flat finish, no mockup, no drop shadows, no 3D bevel",
+          mood: mood || "confident and timeless",
+          typographyTreatment: "the brand name set in a distinctive, well-kerned, correctly spelled custom-feeling logotype",
+        }
+      : {
+          subject: `the actual retail product for "${kit.brandName}" in its real-world package/container, label fully legible`,
+          camera: "85mm product lens, slight hero angle, shallow depth of field, product razor-sharp",
+          lighting: "premium softbox studio lighting with a soft key, gentle rim light, true-to-life reflections on the material",
+          colorGrade: `brand palette (${palette || "neutral"}); rich but realistic contrast, accurate product color`,
+          composition: "front-of-pack hero, product centered with breathing room, clean seamless backdrop, magazine product-shot framing",
+          texture: "true material finish — show the real substrate (glass, tube, carton, matte/gloss), label print crisp and readable",
+          mood: mood || "premium and trustworthy",
+          typographyTreatment: "on-pack brand name and key claim crisp, correctly spelled, integrated into the label design",
+        };
+
   return CreativeSpecSchema.parse({
     id: `identity-${kind}`,
     briefId: `identity-${kind}`,
@@ -28,10 +55,18 @@ function identitySpec(kit: BrandKit, kind: "logo" | "packaging"): CreativeSpec {
       kind === "logo"
         ? "centered primary mark on a clean background, generous margin, scalable"
         : "front-of-pack hero, product centered, label legible, retail studio lighting",
+    direction: dir,
     imagePrompt:
-      `${kind === "logo" ? "Primary brand logo" : "Product packaging"} for "${kit.brandName}". ` +
-      `${direction}. Essence: ${kit.essence}.`,
-    negativePrompt: "",
+      `${kind === "logo" ? "Primary brand logo" : "Photorealistic retail product packaging"} for "${kit.brandName}". ` +
+      `${direction}. Essence: ${kit.essence}.` +
+      (kind === "packaging"
+        ? ` It must look like a real, premium product you could pick up off a shelf — a believable physical package, ` +
+          `not a flat graphic or generic box mockup.`
+        : ""),
+    negativePrompt:
+      kind === "packaging"
+        ? "generic box mockup, floating label, fake/placeholder text, lorem ipsum, watermark, distorted typography, plastic CGI look"
+        : "photographic background, mockup, drop shadow, 3D bevel, busy background, misspelled wordmark",
     rationale: `Foundational ${kind} that anchors the whole visual system.`,
   });
 }

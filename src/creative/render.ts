@@ -127,12 +127,19 @@ export async function renderCreative(
   }
 
   const client = opts.client ?? new ImageClient(cfg);
+  const system =
+    `You are a world-class art director and product photographer rendering a ${spec.assetType} for the ` +
+    `brand "${kit.brandName}". Output must look like a real, award-winning, editorial-grade asset — ` +
+    `photorealistic where the asset is a photograph, with flawless craft, realistic materials and lighting, ` +
+    `correct physics, and crisp correctly-spelled typography. No AI/stock/template tells, no warped text, ` +
+    `no extra limbs or melted edges, no generic mockups. Honor the brand system exactly.` +
+    (kit.negativePrompt ? ` Global brand negatives to avoid: ${kit.negativePrompt}.` : "");
   const blob = await client.generate({
     prompt,
     model,
     aspect: spec.aspect,
     imageSize: opts.imageSize ?? (opts.tier === "pro" ? "2K" : "1K"),
-    system: `Global brand negative prompt: ${kit.negativePrompt}`,
+    system,
     refImages: opts.refImages,
   });
   const ext = blob.mime.includes("jpeg") ? "jpg" : "png";

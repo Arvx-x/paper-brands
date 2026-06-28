@@ -11,7 +11,7 @@ export interface CreativeAssets {
 export interface BuildLandingPageOptions {
   outDir: string;
   experimentId?: string;
-  model?: string;       // default "gemini-3.1-flash"
+  model?: string;       // default "gemini-3-flash-preview"
   currency?: string;    // fallback price currency, default "INR"
 }
 

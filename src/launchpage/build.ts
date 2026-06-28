@@ -17,7 +17,7 @@ export async function buildLandingPage(
 
   let html: string;
   try {
-    html = await codePage(concept, assets, llm, opts.model ?? "gemini-3.1-flash");
+    html = await codePage(concept, assets, llm, opts.model ?? "google:gemini-3-flash-preview");
   } catch (e) {
     usedFallback = true;
     warnings.push(`LLM page-code failed, used fallback renderPdpPage: ${(e as Error).message}`);
