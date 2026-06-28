@@ -87,6 +87,12 @@ export const ProvenanceSchema = z.object({
   /** True when coverage fell below threshold or a negative-evidence lens was empty. */
   degraded: z.boolean().default(false),
   model: z.string().optional(),
+  /** Count of user-supplied customer voices folded in as first-party sources. */
+  userVoices: z.number().default(0),
+  /** Count of user-supplied SKU observations merged in. */
+  userSkus: z.number().default(0),
+  /** Pack fields the user hard-overrode (e.g. ["priceBands","currency"]). */
+  overridesApplied: z.array(z.string()).default([]),
   confidence: z.enum(["low", "medium", "high"]).default("low"),
 });
 export type Provenance = z.infer<typeof ProvenanceSchema>;

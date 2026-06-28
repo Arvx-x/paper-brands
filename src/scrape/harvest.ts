@@ -312,6 +312,9 @@ export function corpusProvenance(
     truncated: opts.truncated ?? false,
     degraded: cov.degraded,
     model: opts.model,
+    userVoices: 0,
+    userSkus: 0,
+    overridesApplied: [],
     confidence,
   };
 }

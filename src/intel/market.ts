@@ -306,7 +306,7 @@ export async function buildCategoryPack(
   // high-confidence. (No source text => ungrounded prior pack, low confidence.)
   const base: Provenance =
     brief.provenance ??
-    ({ grounded: false, confidence: "low", lensesPlanned: 0, lensesSucceeded: 0, missingLenses: [], distinctDomains: 0, independentDomains: 0, fetchedSources: 0, sourceClassCounts: {}, citationCountRaw: 0, attributionRate: 0, attributedItems: 0, totalItems: 0, independentItems: 0, skuCount: 0, providersUsed: [], truncated: false, degraded: !brief.evidence } satisfies Provenance);
+    ({ grounded: false, confidence: "low", lensesPlanned: 0, lensesSucceeded: 0, missingLenses: [], distinctDomains: 0, independentDomains: 0, fetchedSources: 0, sourceClassCounts: {}, citationCountRaw: 0, attributionRate: 0, attributedItems: 0, totalItems: 0, independentItems: 0, skuCount: 0, providersUsed: [], truncated: false, degraded: !brief.evidence, userVoices: 0, userSkus: 0, overridesApplied: [] } satisfies Provenance);
   const attrConf: Provenance["confidence"] =
     attributedItems === 0 ? "low" : attributionRate >= 0.7 ? "high" : attributionRate >= 0.4 ? "medium" : "low";
   pack.provenance = {
