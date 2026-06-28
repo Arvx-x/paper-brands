@@ -39,7 +39,13 @@ export class RunBroadcaster {
 
   constructor(private cap = 500) {}
 
-  setRunning(category: string) { this.status = "running"; this.category = category; }
+  setRunning(category: string) {
+    // Clear buffer + reset seq so a new run doesn't replay the previous run's events to late-joiners.
+    this.buffer = [];
+    this.seq = 0;
+    this.status = "running";
+    this.category = category;
+  }
   setStatus(s: RunStatus) { this.status = s; }
 
   emit(input: EmitInput): PipelineEvent {

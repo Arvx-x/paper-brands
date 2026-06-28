@@ -17,8 +17,8 @@ export async function runFoundryPipeline(
 
   onEvent({ type: "run-started", category });
   try {
-    await runFoundry({ categoryId: category, candidates: 8, cohortSize: 80, mode: "deep", moat: true, onEvent } as any);
-    const lp = await runLaunchpages({ onEvent } as any);
+    await runFoundry({ categoryId: category, candidates: 8, cohortSize: 80, onEvent });
+    const lp = await runLaunchpages({ onEvent });
     const pageUrls = (lp.built ?? []).map((b: any) => ({
       name: b.name,
       url: "/" + String(b.indexPath).replace(/^\.?\//, ""),

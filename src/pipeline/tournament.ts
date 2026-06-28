@@ -120,7 +120,9 @@ export async function runTournament(opts: TournamentOptions): Promise<Tournament
   );
 
   // Run 1 is always the headline report (back-compat for single-run consumers).
+  opts.onEvent?.({ type: "stage", stage: "arena", status: "start" });
   const report = await runOnce(baseSeed);
+  opts.onEvent?.({ type: "stage", stage: "arena", status: "done" });
   opts.onEvent?.({ type: "stage", stage: "scoring", status: "done" });
   const winRateOf = (r: ArenaReport) => r.winner?.winRate ?? r.candidateShareVsField;
 
