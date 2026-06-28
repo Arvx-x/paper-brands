@@ -1,0 +1,714 @@
+# Playground Redesign Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Rebuild `public/index.html` into a production-grade playground — a persistent left control/status sidebar, a live "what's being scraped" Harvest & Intel view, a tall scrollable Arena conversation feed, restyled Creative/Pages tabs, an inline upload dropzone, and user-data honesty badges — keeping the tested `viewstate.ts` reducer as the single source of truth.
+
+**Architecture:** Only the DOM render layer of `public/index.html` changes plus a small additive backend change: a new `intel-userdata` event carries user-data provenance from `pipeline.ts` (where it is computed) into the reducer's `IntelState`. The reducer stays the tested heart; the DOM render is a dumb projection and stays untested. Single self-contained HTML file, native `EventSource`, reducer served transpiled at `/viewstate.js`.
+
+**Tech Stack:** Bun, TypeScript, zod, `bun:test`, vanilla DOM + native EventSource (no framework).
+
+**Spec:** `docs/superpowers/specs/2026-06-28-playground-redesign-design.md`
+
+---
+
+## File Structure
+
+- Modify: `src/server/events.ts` — add `intel-userdata` event to `PipelineEvent`.
+- Modify: `src/server/viewstate.ts` — `IntelState` gains 4 fields; reduce `intel-userdata`.
+- Modify: `src/server/viewstate.test.ts` — reducer test for the new event.
+- Modify: `src/server/pipeline.ts` — emit `intel-userdata` after stamping provenance.
+- Modify: `public/index.html` — full DOM-render redesign (the bulk; untested).
+
+Why a new `intel-userdata` event instead of extending `intel-done`: `intel-done` is
+emitted from `src/intel/market.ts` *inside* `buildCategoryPack`, BEFORE the pipeline
+stamps user-data provenance (`pipeline.ts:70`). The user-data counts only exist in
+`pipeline.ts` after `applyOverrides`. A separate event emitted from `pipeline.ts`
+keeps `market.ts` (also used by the standalone `intel` CLI) untouched and keeps each
+event single-responsibility.
+
+---
+
+## Task 1: Add `intel-userdata` event type
+
+**Files:**
+- Modify: `src/server/events.ts:13-14`
+
+- [ ] **Step 1: Add the event to the `PipelineEvent` union**
+
+In `src/server/events.ts`, after the `intel-done` line (line 14), add:
+
+```ts
+  | (BaseEvent & { type: "intel-userdata"; userVoices: number; userSkus: number; skuConflicts: number; overridesApplied: string[] })
+```
+
+- [ ] **Step 2: Typecheck**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun run typecheck`
+Expected: clean (the reducer's `switch` has a `default` case, so an unhandled new variant does not break the build yet).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/server/events.ts
+git commit -m "feat(events): add intel-userdata event for user-data provenance"
+```
+
+---
+
+## Task 2: Extend `IntelState` + reduce `intel-userdata`
+
+**Files:**
+- Modify: `src/server/viewstate.ts:21-24` (IntelState), `:77-78` (reduce)
+- Modify: `src/server/viewstate.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `src/server/viewstate.test.ts`:
+
+```ts
+test("intel-userdata populates user-data fields on intel state", () => {
+  const s = fold([
+    { type: "run-started", category: "x" },
+    { type: "intel-done", confidence: "medium", grounded: true, attribution: 60, segments: 5, competitors: 4, degraded: false },
+    { type: "intel-userdata", userVoices: 42, userSkus: 18, skuConflicts: 1, overridesApplied: ["priceBands", "currency"] },
+  ]);
+  expect(s.intel.confidence).toBe("medium");
+  expect(s.intel.userVoices).toBe(42);
+  expect(s.intel.userSkus).toBe(18);
+  expect(s.intel.skuConflicts).toBe(1);
+  expect(s.intel.overridesApplied).toEqual(["priceBands", "currency"]);
+});
+
+test("intel state has no user-data fields when intel-userdata never fires", () => {
+  const s = fold([
+    { type: "run-started", category: "x" },
+    { type: "intel-done", confidence: "low", grounded: false, attribution: 0, segments: 3, competitors: 2, degraded: true },
+  ]);
+  expect(s.intel.userVoices).toBeUndefined();
+  expect(s.intel.overridesApplied).toBeUndefined();
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun test src/server/viewstate.test.ts`
+Expected: FAIL — `s.intel.userVoices` is `undefined` in the first test (event not handled).
+
+- [ ] **Step 3: Add fields to `IntelState`**
+
+In `src/server/viewstate.ts`, replace the `IntelState` interface (lines 21-24) with:
+
+```ts
+export interface IntelState {
+  confidence?: string; grounded?: boolean; attribution?: number;
+  segments?: number; competitors?: number; degraded?: boolean;
+  userVoices?: number; userSkus?: number; skuConflicts?: number; overridesApplied?: string[];
+}
+```
+
+- [ ] **Step 4: Add the reduce case**
+
+In `src/server/viewstate.ts`, after the `intel-done` case (line 78), add:
+
+```ts
+    case "intel-userdata":
+      return { ...state, intel: { ...state.intel, userVoices: e.userVoices, userSkus: e.userSkus, skuConflicts: e.skuConflicts, overridesApplied: e.overridesApplied } };
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun test src/server/viewstate.test.ts && bun run typecheck`
+Expected: PASS (both new tests), typecheck clean.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/server/viewstate.ts src/server/viewstate.test.ts
+git commit -m "feat(viewstate): IntelState carries user-data provenance via intel-userdata"
+```
+
+---
+
+## Task 3: Emit `intel-userdata` from the pipeline
+
+**Files:**
+- Modify: `src/server/pipeline.ts:78-80`
+- Modify: `src/server/pipeline.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `src/server/pipeline.test.ts` (the file already defines `fakeDeps` and imports `runFoundryPipeline` + `UserIntel`):
+
+```ts
+test("emits intel-userdata with provenance counts when userIntel present", async () => {
+  const cap: { brief?: any } = {};
+  const events: any[] = [];
+  const intel: UserIntel = {
+    voices: [{ quote: "melts in my bag every summer", kind: "rejection", source: "NPS", independent: true }],
+    skus: [{ brand: "Acme", product: "Balm", price: 199 }],
+    competitors: [], overrides: { currency: "USD" },
+    summary: { voices: 1, skus: 1, competitors: 0, overrides: ["currency"] },
+  };
+  await runFoundryPipeline("c", (e) => events.push(e), fakeDeps(cap), 80, intel);
+  const ud = events.find((e) => e.type === "intel-userdata");
+  expect(ud).toBeDefined();
+  expect(ud.userVoices).toBe(1);
+  expect(ud.userSkus).toBe(1);
+  expect(ud.overridesApplied).toEqual(["currency"]);
+});
+
+test("does NOT emit intel-userdata when no userIntel", async () => {
+  const cap: { brief?: any } = {};
+  const events: any[] = [];
+  await runFoundryPipeline("c", (e) => events.push(e), fakeDeps(cap), 80);
+  expect(events.some((e) => e.type === "intel-userdata")).toBe(false);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun test src/server/pipeline.test.ts`
+Expected: FAIL — no `intel-userdata` event emitted.
+
+- [ ] **Step 3: Emit the event in `pipeline.ts`**
+
+In `src/server/pipeline.ts`, find (lines 78-80):
+
+```ts
+    }
+    const packPath = await savePack(pack);
+    onEvent({ type: "stage", stage: "intel", status: "done", note: packPath });
+```
+
+Replace with:
+
+```ts
+    }
+    // Surface user-data provenance to the UI (only when a workbook was supplied),
+    // so honesty badges can disclose how much the run leaned on user evidence.
+    if (userIntel) {
+      onEvent({ type: "intel-userdata",
+        userVoices: userIntel.voices.length,
+        userSkus: userIntel.skus.length,
+        skuConflicts,
+        overridesApplied: applied });
+    }
+    const packPath = await savePack(pack);
+    onEvent({ type: "stage", stage: "intel", status: "done", note: packPath });
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun test src/server/pipeline.test.ts && bun run typecheck`
+Expected: PASS (both new tests + existing), typecheck clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/server/pipeline.ts src/server/pipeline.test.ts
+git commit -m "feat(pipeline): emit intel-userdata after stamping user-data provenance"
+```
+
+---
+
+## Task 4: Redesign `public/index.html` — shell, sidebar, visual system
+
+**Files:**
+- Modify: `public/index.html` (replace the whole file)
+
+This is the large render task. The reducer import, event wiring, modal, and all the
+existing per-tab data reads are preserved; only structure + styling change, plus the
+new sidebar, dropzone, stage checklist, live harvest view, scrollable arena feed, and
+honesty badges. Because the render layer is untested, verification is manual (Step 4).
+
+- [ ] **Step 1: Replace `public/index.html` with the redesigned file**
+
+Write the following complete file to `public/index.html`:
+
+```html
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Paper Brands — Playground</title>
+<style>
+:root{
+  --bg:#f6f6f4;--white:#fff;--ink:#1a1a1a;--line:#e2e2df;--mut:#6b7280;
+  --accent:#f9427d;--accent-bg:#fff0f4;--good:#16a34a;--warn:#d97706;--bad:#dc2626;--blue:#2563eb;
+  --tag:#f0f0ec;--shadow:4px 4px 0 var(--ink);
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s6:24px;--s8:32px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5}
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* ── SIDEBAR ── */
+.side{width:280px;flex-shrink:0;background:var(--white);border-right:2px solid var(--ink);display:flex;flex-direction:column;padding:var(--s6) var(--s4);gap:var(--s4);overflow-y:auto}
+.brand{font-weight:800;font-size:18px;letter-spacing:-.4px}
+.field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin-bottom:var(--s1)}
+.cat-input{width:100%;border:2px solid var(--ink);border-radius:6px;padding:9px 12px;font-size:13px;background:var(--white);outline:none}
+.cat-input:focus{border-color:var(--accent)}
+.cohort-row{display:flex;align-items:center;gap:var(--s2);font-size:12px;color:var(--mut)}
+.cohort-row input[type=range]{flex:1;accent-color:var(--accent);cursor:pointer}
+.cohort-num{font-weight:800;color:var(--ink);min-width:26px;text-align:right}
+.run-btn{width:100%;background:var(--ink);color:#fff;border:2px solid var(--ink);border-radius:6px;padding:11px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:var(--shadow);transition:transform .1s,background .15s}
+.run-btn:hover:not(:disabled){background:var(--accent);border-color:var(--accent)}
+.run-btn:active:not(:disabled){transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
+.run-btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.status-pill{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border:1.5px solid var(--line);border-radius:5px;padding:6px 10px;background:var(--tag);text-align:center}
+.status-pill.running{border-color:var(--warn);color:var(--warn);background:#fffbeb}
+.status-pill.complete{border-color:var(--good);color:var(--good);background:#f0fdf4}
+.status-pill.error{border-color:var(--bad);color:var(--bad);background:#fef2f2}
+.reconnect{font-size:10px;color:var(--warn);text-align:center;margin-top:var(--s1)}
+
+/* ── DROPZONE ── */
+.drop{border:2px dashed #bbb;border-radius:8px;padding:var(--s4);text-align:center;font-size:12px;color:var(--mut);cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-bg)}
+.drop .di{font-size:18px;display:block;margin-bottom:var(--s1)}
+.tmpl-link{display:inline-block;margin-top:var(--s2);font-size:11px;color:var(--blue);text-decoration:underline;cursor:pointer}
+.chip{border:2px solid var(--ink);border-radius:8px;padding:var(--s3);font-size:12px;background:var(--white)}
+.chip .cn{font-weight:700;display:flex;align-items:center;gap:var(--s2)}
+.chip .cn .cx{margin-left:auto;cursor:pointer;color:var(--mut);border:0;background:0;font-size:15px;line-height:1}
+.chip .cc{color:var(--mut);margin-top:var(--s1);line-height:1.5}
+.chip .cwarn{color:var(--warn);font-size:11px;margin-top:var(--s2);cursor:pointer;font-weight:600}
+.chip .cwlist{margin-top:var(--s2);font-size:11px;color:var(--mut);max-height:120px;overflow-y:auto;border-top:1px solid var(--line);padding-top:var(--s2)}
+.chip .cwlist div{margin-bottom:3px}
+.drop-err{color:var(--bad);font-size:11px;margin-top:var(--s2);font-weight:600}
+
+/* ── STAGE CHECKLIST ── */
+.stages{margin-top:var(--s2);border-top:1px solid var(--line);padding-top:var(--s4)}
+.stages .sl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin-bottom:var(--s3)}
+.srow{display:flex;align-items:center;gap:var(--s2);padding:5px 0;font-size:13px;color:var(--mut)}
+.srow .sg{width:18px;text-align:center;flex-shrink:0}
+.srow.active{color:var(--ink);font-weight:700}
+.srow.active .sg{color:var(--accent)}
+.srow.done{color:var(--ink)}
+.srow.done .sg{color:var(--good)}
+
+/* ── RIGHT PANE ── */
+.pane{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;background:var(--white);border-bottom:2px solid var(--ink);padding:0 var(--s6);flex-shrink:0}
+.tab{padding:14px 20px;font-size:13px;font-weight:700;color:var(--mut);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--ink);border-bottom-color:var(--accent)}
+.content{flex:1;overflow-y:auto;padding:var(--s6);display:flex;flex-direction:column}
+
+/* ── CARDS ── */
+.card{background:var(--white);border:2px solid var(--ink);border-radius:10px;padding:var(--s6);width:100%}
+.card.grow{flex:1;display:flex;flex-direction:column;min-height:0}
+.card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin-bottom:var(--s4)}
+
+/* ── HARVEST LIVE VIEW ── */
+.totals{display:flex;gap:var(--s6);background:var(--white);border:2px solid var(--ink);border-radius:10px;padding:var(--s4) var(--s6);margin-bottom:var(--s4)}
+.tstat .tv{font-size:24px;font-weight:800;line-height:1}
+.tstat .tl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin-top:3px}
+.hrow{display:flex;align-items:center;gap:var(--s4);padding:11px 0;border-bottom:1px solid var(--line);font-size:13px}
+.hrow:last-child{border-bottom:0}
+.hrow .hg{width:20px;text-align:center;flex-shrink:0}
+.hrow.done .hg{color:var(--good)}
+.hrow.active .hg{color:var(--accent)}
+.hinfo{font-weight:700;min-width:180px}
+.hmeta{color:var(--mut);font-size:12px;flex:1}
+.badges{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)}
+.ubadge{font-size:11px;font-weight:700;background:var(--accent-bg);color:var(--accent);border:1.5px solid var(--accent);border-radius:5px;padding:4px 9px}
+.istat{display:flex;gap:var(--s6);margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)}
+.istat .iv{font-size:18px;font-weight:800}
+.istat .il{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut)}
+
+/* ── WINNER BANNER ── */
+.winner{background:var(--white);border:2px solid var(--ink);border-radius:10px;box-shadow:var(--shadow);padding:var(--s4) var(--s6);margin-bottom:var(--s4);display:flex;align-items:center;gap:var(--s4)}
+.wbadge{background:var(--ink);color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;border-radius:5px;padding:3px 8px}
+.wname{font-size:20px;font-weight:800;letter-spacing:-.3px}
+.wstats{display:flex;gap:var(--s6);margin-left:auto}
+.wstat{text-align:right}
+.wstat .v{font-size:22px;font-weight:800;line-height:1}
+.wstat .l{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);margin-top:2px}
+.wstat.good .v{color:var(--good)}
+
+/* ── TALLY ── */
+.barrow{margin-bottom:10px}
+.barrow .bh{display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:4px}
+.track{background:var(--tag);border:1px solid var(--line);border-radius:3px;height:12px;overflow:hidden}
+.fill{background:var(--ink);height:12px;transition:width .35s ease}
+.tally-foot{font-size:11px;color:var(--mut);margin-top:var(--s3);border-top:1px solid var(--line);padding-top:10px}
+
+/* ── ARENA FEED ── */
+.feed{flex:1;overflow-y:auto;min-height:0}
+.fitem{border:1.5px solid var(--line);border-left:3px solid var(--good);border-radius:6px;padding:11px 14px;margin-bottom:var(--s2);font-size:13px;cursor:pointer;background:var(--white)}
+.fitem:hover{border-color:var(--ink)}
+.fitem.ab{border-left-color:var(--line)}
+.fitem .ftop{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.fitem .pid{font-weight:700;font-size:11px}
+.fitem .seg{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);background:var(--tag);border:1px solid var(--line);border-radius:3px;padding:1px 5px}
+.fitem .opt{font-weight:700;color:var(--blue);font-size:11px}
+.fitem .conv{font-size:10px;color:var(--mut);margin-left:auto}
+.fitem .reason{color:var(--ink);font-size:12px;line-height:1.45}
+.fitem .obj{color:var(--warn);font-size:11px;margin-top:3px}
+
+/* ── CREATIVE ── */
+.brow{display:flex;align-items:center;gap:var(--s4);padding:var(--s3) 0;border-bottom:1px solid var(--line)}
+.brow:last-child{border-bottom:0}
+.brow .bname{font-weight:700;width:160px;flex-shrink:0}
+.brow .bmoat{font-size:11px;color:var(--mut);margin-top:2px}
+.thumbs{display:flex;gap:var(--s2)}
+.thumb{width:62px;height:62px;border-radius:6px;border:1.5px solid var(--line);object-fit:cover;background:var(--tag)}
+.thumb.ph{display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--mut)}
+
+/* ── PAGES ── */
+.pages{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s4);width:100%}
+@media(max-width:900px){.pages{grid-template-columns:1fr}}
+.pcard{background:var(--white);border:2px solid var(--ink);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}
+.pframe{height:220px;overflow:hidden;border-bottom:2px solid var(--ink);background:var(--tag)}
+.pframe iframe{width:100%;height:100%;border:0}
+.pbody{padding:var(--s4)}
+.pname{font-weight:800;font-size:15px;margin-bottom:6px}
+.pmeta{display:flex;gap:8px;margin-bottom:var(--s3)}
+.ptag{font-size:11px;font-weight:600;background:var(--tag);border:1px solid var(--line);border-radius:3px;padding:2px 7px}
+.ptag.win{background:var(--accent-bg);color:var(--accent);border-color:var(--accent)}
+.pcard a{display:block;text-align:center;background:var(--ink);color:#fff;text-decoration:none;border-radius:6px;padding:9px;font-size:13px;font-weight:700}
+.pcard a:hover{background:var(--accent)}
+
+/* ── MODAL ── */
+.modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
+.modal-ov.open{display:flex}
+.modal{background:var(--white);border:2px solid var(--ink);border-radius:10px;width:540px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column}
+.mhead{display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s6);border-bottom:1.5px solid var(--line)}
+.mhead .mn{font-weight:800;font-size:15px}
+.mhead .ms{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);background:var(--tag);border:1px solid var(--line);border-radius:3px;padding:2px 7px}
+.mhead .mc{margin-left:auto;cursor:pointer;font-size:18px;color:var(--mut);border:0;background:0}
+.mbody{padding:var(--s6);overflow-y:auto}
+.drow{display:flex;gap:var(--s2);margin-bottom:var(--s2);font-size:13px}
+.drow .dk{width:90px;flex-shrink:0;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.drow .dv.pick{color:var(--blue);font-weight:700}
+.drow .dv.obj{color:var(--warn)}
+.conf-bar{height:6px;background:var(--tag);border:1px solid var(--line);border-radius:3px;margin-top:6px;overflow:hidden}
+.conf-fill{height:6px;background:var(--good)}
+
+/* ── MISC ── */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+.err-banner{background:#fef2f2;border:2px solid var(--bad);border-radius:8px;padding:14px 18px;color:#991b1b;margin-bottom:var(--s4);font-weight:600}
+.empty{text-align:center;padding:80px 20px;color:var(--mut);margin:auto}
+.empty .big{font-size:42px;margin-bottom:var(--s3)}
+.empty p{font-size:14px;max-width:400px;margin:0 auto}
+</style></head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="side">
+    <div class="brand">Paper Brands</div>
+    <div>
+      <div class="field-label">Category</div>
+      <input id="cat" class="cat-input" placeholder="e.g. lip-balm-india" value="lip-balm-india">
+    </div>
+    <div>
+      <div class="field-label">Cohort size</div>
+      <div class="cohort-row"><input id="cohort" type="range" min="20" max="120" step="20" value="80"><span id="cohort-val" class="cohort-num">80</span></div>
+    </div>
+    <div>
+      <div class="field-label">Your data (optional)</div>
+      <div id="dropwrap"></div>
+      <input id="file" type="file" accept=".xlsx" hidden>
+    </div>
+    <button id="run" class="run-btn">▶ Run Simulation</button>
+    <div id="status" class="status-pill">Idle</div>
+    <div id="recon" class="reconnect" style="display:none">⚠ reconnecting…</div>
+    <div class="stages" id="stages"></div>
+  </aside>
+
+  <!-- RIGHT PANE -->
+  <div class="pane">
+    <div class="tabs" id="tabs">
+      <span class="tab" data-tab="harvest">Harvest &amp; Intel</span>
+      <span class="tab" data-tab="arena">Arena</span>
+      <span class="tab" data-tab="creative">Creative</span>
+      <span class="tab" data-tab="pages">Pages</span>
+    </div>
+    <main class="content" id="main"></main>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-ov" id="modal">
+  <div class="modal">
+    <div class="mhead"><span class="mn" id="m-name"></span><span class="ms" id="m-seg"></span><button class="mc" id="mclose">✕</button></div>
+    <div class="mbody" id="m-body"></div>
+  </div>
+</div>
+
+<script type="module">
+import { reduce, initialState } from "/viewstate.js";
+let state = initialState();
+let pendingFile = null;          // the File object to attach to the run
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const pct = (v) => v != null ? (v * 100).toFixed(0) + "%" : "—";
+
+// ── STAGE CHECKLIST ──
+const STAGE_GROUPS = [
+  { label: "Harvest", stages: ["harvest"] },
+  { label: "Intel", stages: ["intel"] },
+  { label: "Arena", stages: ["council","cohort","arena","scoring"] },
+  { label: "Creative", stages: ["finalists","creative"] },
+  { label: "Pages", stages: ["pages"] },
+];
+function groupState(s, group) {
+  const sts = group.stages.map((st) => s.stages[st]);
+  if (sts.every((x) => x === "done")) return "done";
+  if (sts.some((x) => x === "active")) return "active";
+  if (sts.some((x) => x === "done")) return "active"; // partially done
+  return "pending";
+}
+function renderStages(s) {
+  const rows = STAGE_GROUPS.map((g) => {
+    const gs = groupState(s, g);
+    const glyph = gs === "done" ? "✓" : gs === "active" ? '<span class="spin">⟳</span>' : "○";
+    return `<div class="srow ${gs}"><span class="sg">${glyph}</span><span>${g.label}</span></div>`;
+  }).join("");
+  $("stages").innerHTML = `<div class="sl">Pipeline</div>${rows}`;
+}
+
+// ── DROPZONE / CHIP ──
+function renderDrop(opts = {}) {
+  const wrap = $("dropwrap");
+  if (opts.summary) {
+    const sm = opts.summary, w = opts.warnings ?? [];
+    wrap.innerHTML = `<div class="chip">
+      <div class="cn"><span>📄 ${esc(opts.filename)}</span><button class="cx" id="chip-x">✕</button></div>
+      <div class="cc">${sm.voices} voices · ${sm.skus} SKUs · ${sm.competitors} competitors · ${sm.overrides.length} overrides</div>
+      ${w.length ? `<div class="cwarn" id="cwarn">⚠ ${w.length} row${w.length!==1?"s":""} skipped — show</div><div class="cwlist" id="cwlist" style="display:none">${w.map((x)=>`<div>${esc(x)}</div>`).join("")}</div>` : ""}
+    </div>`;
+    $("chip-x").onclick = () => { pendingFile = null; renderDrop(); };
+    if (w.length) { const cw = $("cwarn"), cl = $("cwlist"); cw.onclick = () => { const open = cl.style.display !== "none"; cl.style.display = open ? "none" : "block"; cw.textContent = `⚠ ${w.length} row${w.length!==1?"s":""} skipped — ${open?"show":"hide"}`; }; }
+  } else {
+    wrap.innerHTML = `<div class="drop" id="drop"><span class="di">⬆</span>Drop an .xlsx file or click to browse${opts.error?`<div class="drop-err">${esc(opts.error)}</div>`:""}</div><span class="tmpl-link" id="tmpl">Download template</span>`;
+    const drop = $("drop");
+    drop.onclick = () => $("file").click();
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+    drop.ondragleave = () => drop.classList.remove("over");
+    drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+    $("tmpl").onclick = () => { window.location = "/api/template"; };
+  }
+}
+async function handleFile(file) {
+  pendingFile = file;
+  try {
+    const fd = new FormData(); fd.append("file", file);
+    const r = await fetch("/api/parse", { method: "POST", body: fd });
+    if (!r.ok) { pendingFile = null; renderDrop({ error: "Couldn't read that file — is it an .xlsx?" }); return; }
+    const { summary, warnings } = await r.json();
+    renderDrop({ filename: file.name, summary, warnings });
+  } catch { pendingFile = null; renderDrop({ error: "Upload failed — try again." }); }
+}
+
+// ── TABS ──
+function tabLabel(tab) { return { harvest: "Harvest &amp; Intel", arena: "Arena", creative: "Creative", pages: "Pages" }[tab]; }
+function statusClass(s) { return s === "running" ? "running" : s === "complete" ? "complete" : s === "error" ? "error" : ""; }
+
+function render(s) {
+  const pill = $("status");
+  pill.textContent = s.status === "running" ? "Running" + (s.category ? " · " + s.category : "") : s.status.charAt(0).toUpperCase() + s.status.slice(1);
+  pill.className = "status-pill " + statusClass(s.status);
+  $("run").disabled = s.status === "running";
+  $("run").textContent = s.status === "running" ? "Running…" : "▶ Run Simulation";
+  renderStages(s);
+  for (const t of document.querySelectorAll(".tab")) { t.classList.toggle("active", t.dataset.tab === s.activeTab); t.innerHTML = tabLabel(t.dataset.tab); }
+  const m = $("main");
+  let html = "";
+  if (s.error) html += `<div class="err-banner">⚠ Run error: ${esc(s.error)}</div>`;
+  if (s.activeTab === "harvest") html += harvestHtml(s);
+  else if (s.activeTab === "arena") html += arenaHtml(s);
+  else if (s.activeTab === "creative") html += creativeHtml(s);
+  else html += pagesHtml(s);
+  m.innerHTML = html;
+  for (const el of document.querySelectorAll(".fitem[data-idx]")) el.onclick = () => { const f = s.feed[Number(el.dataset.idx)]; if (f) openModal(f); };
+}
+
+// ── HARVEST + INTEL (live view) ──
+function harvestHtml(s) {
+  const h = s.harvest, intel = s.intel;
+  const hStage = s.stages["harvest"], iStage = s.stages["intel"];
+  const isEmpty = hStage === "pending" && iStage === "pending";
+  if (isEmpty) return `<div class="card grow"><div class="empty"><div class="big">🔍</div><p>Hit Run to start harvesting research and building the intelligence pack for your category. Lenses, sources, and prices will stream here live.</p></div></div>`;
+  const totalLenses = 8;
+  const citations = h.lenses.reduce((n, l) => n + l.citations, 0);
+  const totals = `<div class="totals">
+    <div class="tstat"><div class="tv">${h.lenses.length}</div><div class="tl">Lenses</div></div>
+    <div class="tstat"><div class="tv">${citations}</div><div class="tl">Citations</div></div>
+    <div class="tstat"><div class="tv">${h.skus ?? "—"}</div><div class="tl">SKUs</div></div>
+  </div>`;
+  const lensRows = h.lenses.map((l) => `<div class="hrow done"><span class="hg">✓</span><span class="hinfo">${esc(l.id)}</span><span class="hmeta">${l.findings} findings · ${l.citations} citations</span></div>`).join("");
+  const pendingLens = hStage !== "done" ? `<div class="hrow active"><span class="hg spin">⟳</span><span class="hinfo">Researching lenses…</span><span class="hmeta">${h.lenses.length}/${totalLenses}</span></div>` : "";
+  const srcRow = h.sourcesFetched != null
+    ? `<div class="hrow done"><span class="hg">✓</span><span class="hinfo">Sources fetched</span><span class="hmeta">${h.sourcesFetched}/${h.sourcesTotal} · ${h.domains} domains (${h.independent} independent)</span></div>`
+    : (hStage === "active" && h.lenses.length >= totalLenses ? `<div class="hrow active"><span class="hg spin">⟳</span><span class="hinfo">Fetching source pages…</span><span class="hmeta"></span></div>` : "");
+  const priceRow = h.skus != null
+    ? `<div class="hrow done"><span class="hg">✓</span><span class="hinfo">Price intel</span><span class="hmeta">${h.skus} SKUs · ${(h.priceBands ?? []).map((b) => `${esc(b.label)} ₹${b.min}–${b.max} (${b.share}%)`).join(" · ")}</span></div>`
+    : "";
+  const intelRow = iStage === "done"
+    ? `<div class="hrow done"><span class="hg">✓</span><span class="hinfo">Intel pack built</span><span class="hmeta">${intel.segments ?? 0} segments · ${intel.competitors ?? 0} competitors</span></div>`
+    : iStage === "active" ? `<div class="hrow active"><span class="hg spin">⟳</span><span class="hinfo">Building intelligence pack…</span><span class="hmeta">grounding claims, building segments</span></div>` : "";
+  const istat = iStage === "done" ? `<div class="istat">
+    <div><div class="iv" style="color:${intel.degraded?'var(--warn)':'var(--good)'}">${esc(intel.confidence ?? "—")}</div><div class="il">Confidence</div></div>
+    <div><div class="iv">${intel.attribution ?? 0}%</div><div class="il">Attribution</div></div>
+    <div><div class="iv">${intel.segments ?? 0}</div><div class="il">Segments</div></div>
+    <div><div class="iv">${intel.competitors ?? 0}</div><div class="il">Competitors</div></div>
+    ${intel.degraded ? `<div><div class="iv" style="color:var(--warn)">⚠</div><div class="il">Degraded</div></div>` : ""}
+  </div>` : "";
+  const ub = [];
+  if (intel.userVoices) ub.push(`<span class="ubadge">+${intel.userVoices} user voices</span>`);
+  if (intel.userSkus) ub.push(`<span class="ubadge">${intel.userSkus} user SKUs${intel.skuConflicts ? ` (${intel.skuConflicts} displaced)` : ""}</span>`);
+  if (intel.overridesApplied && intel.overridesApplied.length) ub.push(`<span class="ubadge">overrides: ${intel.overridesApplied.map(esc).join(", ")}</span>`);
+  const badges = ub.length ? `<div class="badges">${ub.join("")}</div>` : "";
+  return `${totals}<div class="card grow"><div class="card-title">Research — live</div>${lensRows}${pendingLens}${srcRow}${priceRow}${intelRow}${istat}${badges}</div>`;
+}
+
+// ── ARENA ──
+function arenaHtml(s) {
+  const total = s.decided + s.abstained;
+  const leader = s.tally[0];
+  const max = Math.max(1, ...s.tally.map((t) => t.votes));
+  const leaderDecision = leader ? s.feed.find((f) => f.pickedLabel === leader.label && !f.abstained) : null;
+  const lcid = leaderDecision?.pickedConceptId;
+  const lbrand = lcid ? (s.finalists.find((f) => f.conceptId === lcid) ?? s.brands.find((b) => b.conceptId === lcid)) : null;
+  const lname = lbrand?.name ?? leader?.label ?? "";
+  const lpct = leader && s.decided > 0 ? ((leader.votes / s.decided) * 100).toFixed(0) : null;
+  const winner = leader && s.decided > 0 ? `<div class="winner">
+    <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+      <span class="wbadge">Currently leading</span><span class="wname">${esc(lname)}</span>
+      ${lname !== leader.label ? `<span style="font-size:11px;color:var(--mut)">${esc(leader.label)}</span>` : ""}
+    </div>
+    <div class="wstats">
+      <div class="wstat good"><div class="v">${lpct}%</div><div class="l">Share</div></div>
+      <div class="wstat good"><div class="v">${leader.votes}</div><div class="l">Votes</div></div>
+      <div class="wstat"><div class="v">${s.decided}</div><div class="l">Decided</div></div>
+      <div class="wstat"><div class="v">${s.abstained}</div><div class="l">Abstained</div></div>
+    </div></div>` : "";
+  const bars = s.tally.length ? s.tally.map((t) => `<div class="barrow"><div class="bh"><span>${esc(t.label)}</span><span>${t.votes} vote${t.votes!==1?"s":""}</span></div><div class="track"><div class="fill" style="width:${(t.votes/max)*100}%"></div></div></div>`).join("") : `<div style="color:var(--mut);padding:20px 0;text-align:center">Waiting for buyer agents…</div>`;
+  const feed = s.feed.map((f, i) => f.abstained || f.errored
+    ? `<div class="fitem ab" data-idx="${i}"><div class="ftop"><span class="pid">${esc(f.personaId)}</span><span class="seg">${esc(f.segment)}</span><span style="font-size:11px;color:var(--mut)">${f.errored?"errored":"abstained"}</span></div></div>`
+    : `<div class="fitem" data-idx="${i}"><div class="ftop"><span class="pid">${esc(f.personaId)}</span><span class="seg">${esc(f.segment)}</span><span class="opt">→ ${esc(f.pickedLabel)}</span>${f.confidence!=null?`<span class="conv">conf ${f.confidence.toFixed(2)}</span>`:""}</div><div class="reason">"${esc(f.reason)}"</div>${f.topObjection?`<div class="obj">Objection: ${esc(f.topObjection)}</div>`:""}</div>`).join("");
+  return `${winner}<div class="card" style="margin-bottom:var(--s4)"><div class="card-title">Vote tally (blind labels)</div>${bars}<div class="tally-foot">${total||0} agents responded · click any conversation to inspect</div></div>
+    <div class="card grow"><div class="card-title">Live agent conversations — click any to open</div><div class="feed">${feed || '<div style="color:var(--mut);padding:30px 0;text-align:center">Conversations will stream here as agents decide…</div>'}</div></div>`;
+}
+
+// ── CREATIVE ──
+function creativeHtml(s) {
+  if (!s.creative.length) return `<div class="card grow"><div class="empty"><div class="big">🎨</div><p>Creative assets appear once finalists are selected from the arena.</p></div></div>`;
+  const rows = s.creative.map((b) => {
+    const moat = s.finalists.find((f) => f.conceptId === b.conceptId)?.moatOverall;
+    const cell = (lbl, url) => url ? `<img class="thumb" src="${esc(url)}" title="${lbl}" onerror="this.style.opacity=.15">` : `<div class="thumb ph">${lbl}</div>`;
+    return `<div class="brow"><div><div class="bname">${esc(b.name)}</div>${moat!=null?`<div class="bmoat">moat ${moat.toFixed(2)}</div>`:""}</div><div class="thumbs">${cell("logo",b.logo)}${cell("pack",b.packaging)}${cell("prod",b.product)}</div></div>`;
+  }).join("");
+  return `<div class="card"><div class="card-title">Finalist creative</div>${rows}</div>`;
+}
+
+// ── PAGES ──
+function pagesHtml(s) {
+  if (!s.pages.length) return `<div class="card grow"><div class="empty"><div class="big">🚀</div><p>Your 3 branded landing pages appear here when the run completes.</p></div></div>`;
+  const cards = s.pages.map((p) => {
+    const win = p.winRate != null ? `<span class="ptag win">Win ${pct(p.winRate)}</span>` : "";
+    const moat = p.moatOverall != null ? `<span class="ptag">Moat ${p.moatOverall.toFixed(2)}</span>` : "";
+    return `<div class="pcard"><div class="pframe"><iframe src="${esc(p.url)}" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe></div><div class="pbody"><div class="pname">${esc(p.name)}</div><div class="pmeta">${win}${moat}</div><a href="${esc(p.url)}" target="_blank">Open page ↗</a></div></div>`;
+  }).join("");
+  return `<div class="pages">${cards}</div>`;
+}
+
+// ── MODAL ──
+function openModal(f) {
+  $("m-name").textContent = f.personaId; $("m-seg").textContent = f.segment;
+  const conf = f.confidence != null ? `<div class="conf-bar"><div class="conf-fill" style="width:${(f.confidence*100).toFixed(0)}%"></div></div>` : "";
+  $("m-body").innerHTML = `
+    <div class="drow"><div class="dk">Picked</div><div class="dv pick">${esc(f.pickedLabel)} (${esc(f.pickedConceptId)})</div></div>
+    <div class="drow"><div class="dk">Reason</div><div class="dv">${esc(f.reason)}</div></div>
+    ${f.topObjection?`<div class="drow"><div class="dk">Objection</div><div class="dv obj">${esc(f.topObjection)}</div></div>`:""}
+    ${f.confidence!=null?`<div class="drow"><div class="dk">Confidence</div><div class="dv">${(f.confidence*100).toFixed(0)}%${conf}</div></div>`:""}
+    ${f.abstained?`<div class="drow"><div class="dk">Status</div><div class="dv" style="color:var(--mut)">Abstained</div></div>`:""}`;
+  $("modal").classList.add("open");
+}
+$("mclose").onclick = () => $("modal").classList.remove("open");
+$("modal").onclick = (e) => { if (e.target === $("modal")) $("modal").classList.remove("open"); };
+
+// ── CONTROLS ──
+for (const t of document.querySelectorAll(".tab")) t.onclick = () => { state = { ...state, activeTab: t.dataset.tab }; render(state); };
+$("cohort").oninput = () => { $("cohort-val").textContent = $("cohort").value; };
+$("file").onchange = (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+$("run").onclick = async () => {
+  const fd = new FormData();
+  fd.append("category", $("cat").value);
+  fd.append("cohortSize", String(Number($("cohort").value) || 80));
+  if (pendingFile) fd.append("file", pendingFile);
+  const r = await fetch("/api/run", { method: "POST", body: fd });
+  if (r.status === 409) $("status").textContent = "a run is already active";
+};
+
+// ── INIT ──
+renderDrop();
+(async () => {
+  try { const snap = await (await fetch("/api/state")).json(); for (const e of snap.events ?? []) state = reduce(state, e); render(state); } catch { render(state); }
+  const es = new EventSource("/api/events");
+  es.onmessage = (m) => { try { state = reduce(state, JSON.parse(m.data)); render(state); $("recon").style.display = "none"; } catch {} };
+  es.onerror = () => { $("recon").style.display = "block"; };
+})();
+render(state);
+</script>
+</body></html>
+```
+
+- [ ] **Step 2: Typecheck (no TS in HTML, but confirm nothing else broke)**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun run typecheck`
+Expected: clean.
+
+- [ ] **Step 3: Serve and smoke-check the static UI**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && (bun run serve > /tmp/pb_redesign.log 2>&1 &) ; sleep 2 ; curl -s -o /dev/null -w "%{http_code}" http://localhost:4317/ ; echo ; curl -s -o /dev/null -w "%{http_code}" http://localhost:4317/viewstate.js ; echo ; curl -s -o /dev/null -w "%{http_code}" http://localhost:4317/api/template ; echo`
+Expected: `200` for `/`, `200` for `/viewstate.js`, `200` for `/api/template`.
+
+- [ ] **Step 4: Manual verification (browser)**
+
+Open `http://localhost:4317`. Confirm:
+- Left sidebar shows brand, category input, cohort slider (live value), dropzone with "Download template" link, Run button (hard shadow), status pill (Idle), and the 5-row stage checklist (all `○` pending).
+- Clicking "Download template" downloads `paper-brands-intel.xlsx`.
+- Dropping/selecting that xlsx shows the chip: `paper-brands-intel.xlsx · 1 voices · 1 SKUs · 1 competitors · 3 overrides`, with `×` to clear.
+- Tabs switch; each shows its empty state (🔍 / waiting / 🎨 / 🚀).
+- Stop the server: `pkill -f "src/cli.ts serve"`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add public/index.html
+git commit -m "feat(ui): production redesign — sidebar control/status, live harvest view, scrollable arena feed, upload dropzone, honesty badges"
+```
+
+---
+
+## Task 5: Full suite + typecheck green
+
+**Files:** none (verification)
+
+- [ ] **Step 1: Run the whole suite**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun test`
+Expected: all tests pass (307 prior + 4 new = 311), 0 fail.
+
+- [ ] **Step 2: Typecheck**
+
+Run: `export PATH="$HOME/.bun/bin:$PATH" && bun run typecheck`
+Expected: clean.
+
+- [ ] **Step 3: Commit (if any fixups were needed)**
+
+```bash
+git add -A
+git commit -m "test(ui): full suite + typecheck green for playground redesign"
+```
+
+---
+
+## Self-Review Notes
+
+- **Spec coverage:** sidebar control+status (Task 4) · upload chip + warnings (Task 4) · stage checklist (Task 4) · live harvest view with running totals (Task 4) · scrollable arena conversation feed (Task 4) · creative/pages restyle (Task 4) · honesty badges (Tasks 1-4) · multipart run wiring (Task 4) · `intel-userdata` event + reducer (Tasks 1-3) · restrained neobrutalist visual system (Task 4). All spec sections mapped.
+- **Type consistency:** `IntelState` fields (`userVoices/userSkus/skuConflicts/overridesApplied`) identical across events.ts, viewstate.ts, pipeline.ts, and index.html reads. Stage-group mapping in index.html matches the `Stage` union in events.ts. `summary` shape (`voices/skus/competitors/overrides`) matches `/api/parse` response from the ingestion feature.
+- **No placeholders:** every code step is complete; the full index.html is inlined.
+- **Reducer stays tested, render untested:** only `IntelState` + one reduce case added with tests (Task 2); DOM render verified manually (Task 4 Step 4), consistent with the existing approach.
