@@ -85,3 +85,25 @@ test("unknown event type leaves state unchanged", () => {
   const s1 = reduce(s0, ev({ type: "totally-unknown" } as any));
   expect(s1).toEqual(s0);
 });
+
+test("intel-userdata populates user-data fields on intel state", () => {
+  const s = fold([
+    { type: "run-started", category: "x" },
+    { type: "intel-done", confidence: "medium", grounded: true, attribution: 60, segments: 5, competitors: 4, degraded: false },
+    { type: "intel-userdata", userVoices: 42, userSkus: 18, skuConflicts: 1, overridesApplied: ["priceBands", "currency"] },
+  ]);
+  expect(s.intel.confidence).toBe("medium");
+  expect(s.intel.userVoices).toBe(42);
+  expect(s.intel.userSkus).toBe(18);
+  expect(s.intel.skuConflicts).toBe(1);
+  expect(s.intel.overridesApplied).toEqual(["priceBands", "currency"]);
+});
+
+test("intel state has no user-data fields when intel-userdata never fires", () => {
+  const s = fold([
+    { type: "run-started", category: "x" },
+    { type: "intel-done", confidence: "low", grounded: false, attribution: 0, segments: 3, competitors: 2, degraded: true },
+  ]);
+  expect(s.intel.userVoices).toBeUndefined();
+  expect(s.intel.overridesApplied).toBeUndefined();
+});

@@ -21,6 +21,7 @@ export interface HarvestState {
 export interface IntelState {
   confidence?: string; grounded?: boolean; attribution?: number;
   segments?: number; competitors?: number; degraded?: boolean;
+  userVoices?: number; userSkus?: number; skuConflicts?: number; overridesApplied?: string[];
 }
 
 export interface ViewState {
@@ -76,6 +77,8 @@ export function reduce(state: ViewState, e: PipelineEvent): ViewState {
       return { ...state, harvest: { ...state.harvest, skus: e.skus, priceBands: e.bands as any } };
     case "intel-done":
       return { ...state, intel: { confidence: e.confidence as string, grounded: e.grounded as boolean, attribution: e.attribution as number, segments: e.segments as number, competitors: e.competitors as number, degraded: e.degraded as boolean } };
+    case "intel-userdata":
+      return { ...state, intel: { ...state.intel, userVoices: e.userVoices, userSkus: e.userSkus, skuConflicts: e.skuConflicts, overridesApplied: e.overridesApplied } };
     case "brand-spawned":
       return { ...state, activeTab: "arena", brands: [...state.brands, { conceptId: e.conceptId, name: e.name, positioning: e.positioning }] };
     case "persona-decision": {
