@@ -77,7 +77,10 @@ export async function runFoundryPipeline(
         skuConflicts,
       };
     }
-    // Surface user-data provenance to the UI (only when a workbook was supplied).
+    // Emit intel-userdata BEFORE stage:intel:done so the UI can render honesty badges
+    // the moment the intel stage completes. This is a separate event from intel-done
+    // (which fires from market.ts inside buildCategoryPack) because user-data provenance
+    // is only available here — after applyOverrides — not inside buildCategoryPack.
     if (userIntel) {
       onEvent({ type: "intel-userdata",
         userVoices: userIntel.voices.length,

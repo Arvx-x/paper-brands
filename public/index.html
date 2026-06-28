@@ -226,7 +226,8 @@ const STAGE_GROUPS = [
 function groupState(s, group) {
   const sts = group.stages.map((st) => s.stages[st]);
   if (sts.every((x) => x === "done")) return "done";
-  if (sts.some((x) => x === "active" || x === "done")) return "active";
+  if (sts.some((x) => x === "active")) return "active";
+  if (sts.some((x) => x === "done")) return "active"; // partially done = in-progress
   return "pending";
 }
 function renderStages(s) {
@@ -248,7 +249,7 @@ function renderDrop(opts = {}) {
       <div class="cc">${sm.voices} voices &middot; ${sm.skus} SKUs &middot; ${sm.competitors} competitors &middot; ${sm.overrides.length} overrides</div>
       ${w.length ? `<div class="cwarn" id="cwarn">&#9888; ${w.length} row${w.length!==1?"s":""} skipped &mdash; show</div><div class="cwlist" id="cwlist" style="display:none">${w.map((x)=>`<div>${esc(x)}</div>`).join("")}</div>` : ""}
     </div>`;
-    $("chip-x").onclick = () => { pendingFile = null; renderDrop(); };
+    $("chip-x").onclick = () => { pendingFile = null; $("file").value = ""; renderDrop(); };
     if (w.length) {
       const cw = $("cwarn"), cl = $("cwlist");
       cw.onclick = () => { const open = cl.style.display !== "none"; cl.style.display = open ? "none" : "block"; cw.textContent = `\u26a0 ${w.length} row${w.length!==1?"s":""} skipped \u2014 ${open?"show":"hide"}`; };
@@ -293,7 +294,10 @@ function render(s) {
   else if (s.activeTab === "arena") html += arenaHtml(s);
   else if (s.activeTab === "creative") html += creativeHtml(s);
   else html += pagesHtml(s);
+  const prevFeed = m.querySelector(".feed");
+  const feedScroll = prevFeed ? prevFeed.scrollTop : 0;
   m.innerHTML = html;
+  if (feedScroll > 0) { const f = m.querySelector(".feed"); if (f) f.scrollTop = feedScroll; }
   for (const el of document.querySelectorAll(".fitem[data-idx]")) el.onclick = () => { const f = s.feed[Number(el.dataset.idx)]; if (f) openModal(f); };
 }
 
@@ -396,6 +400,7 @@ function openModal(f) {
     <div class="drow"><div class="dk">Reason</div><div class="dv">${esc(f.reason)}</div></div>
     ${f.topObjection?`<div class="drow"><div class="dk">Objection</div><div class="dv obj">${esc(f.topObjection)}</div></div>`:""}
     ${f.confidence!=null?`<div class="drow"><div class="dk">Confidence</div><div class="dv">${(f.confidence*100).toFixed(0)}%${conf}</div></div>`:""}
+    ${f.willingnessToPayMinor ? `<div class="drow"><div class="dk">WTP</div><div class="dv">&#8377;${(f.willingnessToPayMinor/100).toLocaleString("en-IN")}</div></div>` : ""}
     ${f.abstained?`<div class="drow"><div class="dk">Status</div><div class="dv" style="color:var(--mut)">Abstained</div></div>`:""}`;
   $("modal").classList.add("open");
 }
@@ -424,7 +429,7 @@ renderDrop();
     render(state);
   } catch { render(state); }
   const es = new EventSource("/api/events");
-  es.onmessage = (m) => { try { state = reduce(state, JSON.parse(m.data)); render(state); $("recon").style.display = "none"; } catch {} };
+  es.onmessage = (m) => { try { state = reduce(state, JSON.parse(m.data)); render(state); $("recon").style.display = "none"; } catch (err) { console.error("render error", err); } };
   es.onerror = () => { $("recon").style.display = "block"; };
 })();
 render(state);
