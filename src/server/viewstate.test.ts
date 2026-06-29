@@ -107,3 +107,16 @@ test("intel state has no user-data fields when intel-userdata never fires", () =
   expect(s.intel.userVoices).toBeUndefined();
   expect(s.intel.overridesApplied).toBeUndefined();
 });
+
+test("card-identity populates identities map per concept", () => {
+  const s = fold([
+    { type: "run-started", category: "x" },
+    { type: "card-identity", conceptId: "A", name: "Verdant", essence: "clinical botanical",
+      vision: "no cracked lips", story: "born on a trek",
+      palette: [{ name: "Pine", hex: "#1f3d2b", role: "primary" }], motifUrl: "/out/a/motif.png" },
+  ]);
+  expect(s.identities["A"]!.name).toBe("Verdant");
+  expect(s.identities["A"]!.vision).toBe("no cracked lips");
+  expect(s.identities["A"]!.palette[0]!.hex).toBe("#1f3d2b");
+  expect(s.identities["A"]!.motifUrl).toBe("/out/a/motif.png");
+});

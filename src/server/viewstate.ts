@@ -1,5 +1,10 @@
 import type { PipelineEvent, Stage } from "./events.ts";
 
+export interface CardIdentity {
+  name: string; essence: string; vision: string; story: string;
+  palette: { name: string; hex: string; role: string }[]; motifUrl?: string;
+}
+
 export interface BrandVote { label: string; votes: number; }  // keyed on blind pickedLabel (e.g. OPTION-A), not a conceptId
 export interface DecisionFeedItem {
   personaId: string; segment: string; pickedLabel: string; pickedConceptId: string;
@@ -38,6 +43,7 @@ export interface ViewState {
   creative: BrandAssets[];
   finalists: FinalistView[];
   pages: PageView[];
+  identities: Record<string, CardIdentity>;
   error?: string;
 }
 
@@ -49,6 +55,7 @@ export function initialState(): ViewState {
   return {
     status: "idle", activeTab: "harvest", stages, brands: [], tally: [],
     decided: 0, abstained: 0, feed: [], creative: [], finalists: [], pages: [],
+    identities: {},
     harvest: { lenses: [] }, intel: {},
   };
 }
@@ -107,6 +114,10 @@ export function reduce(state: ViewState, e: PipelineEvent): ViewState {
       entry[e.kind] = e.url;
       return { ...state, creative };
     }
+    case "card-identity":
+      return { ...state, identities: { ...state.identities, [e.conceptId]: {
+        name: e.name, essence: e.essence, vision: e.vision, story: e.story,
+        palette: e.palette, motifUrl: e.motifUrl } } };
     case "page-ready": {
       const fin = state.finalists.find((f) => f.conceptId === e.conceptId);
       const pages = [...state.pages, { conceptId: e.conceptId, name: e.name, url: e.url,
