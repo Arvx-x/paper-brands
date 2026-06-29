@@ -9,6 +9,9 @@ import type { FinalistsArtifact } from "../pipeline/foundry.ts";
 import { deriveLiteKit } from "./kit.ts";
 import { productSpec } from "./spec.ts";
 import type { LaunchpagesOptions, BuiltPage, LaunchpagesResult } from "./types.ts";
+import { buildBrandKit as realBuildBrandKit, saveBrandKit } from "../creative/brandkit.ts";
+import { buildNarrative as realBuildNarrative, saveNarrative } from "../brand/narrative.ts";
+import { generateMotif as realGenerateMotif } from "../creative/motif.ts";
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -21,6 +24,9 @@ export interface LaunchpagesDeps {
   buildLandingPage?: typeof realBuildLandingPage;
   imageClient?: ImageClient;
   llm?: LLMClient;
+  buildBrandKit?: typeof realBuildBrandKit;
+  buildNarrative?: typeof realBuildNarrative;
+  generateMotif?: typeof realGenerateMotif;
 }
 
 async function defaultReadFinalists(path: string) {
@@ -39,6 +45,9 @@ export async function runLaunchpages(
   const buildLandingPage = deps.buildLandingPage ?? realBuildLandingPage;
   const llm = deps.llm ?? new LLMClient();
   const imageClient = deps.imageClient ?? new ImageClient();
+  const buildBrandKit = deps.buildBrandKit ?? realBuildBrandKit;
+  const buildNarrative = deps.buildNarrative ?? realBuildNarrative;
+  const generateMotif = deps.generateMotif ?? realGenerateMotif;
 
   const outDir = opts.outDir ?? "out/launchpages";
   const { categoryId, finalists } = await readFinalists(opts.finalistsPath ?? "out/finalists.json");
@@ -70,13 +79,27 @@ export async function runLaunchpages(
     }
     try {
       await mkdir(bundleDir, { recursive: true });
-      const kit = deriveLiteKit(concept);
+      // Build the real LLM kit; fall back to the lite stub if it fails.
+      let kit;
+      try {
+        kit = await buildBrandKit(concept, undefined, llm, "India");
+      } catch (e) {
+        console.error(`[launchpages] buildBrandKit failed for ${concept.id}, using lite kit: ${(e as Error).message}`);
+        kit = deriveLiteKit(concept);
+      }
+      const narrative = await buildNarrative(concept, kit, llm, "India");
+      const motif = await generateMotif(kit, { outDir: bundleDir, imageClient, llm });
+      await saveBrandKit(kit, bundleDir);
+      await saveNarrative(narrative, bundleDir);
+      const rel = (p: string) => "/" + p.replace(/^\.?\//, "");
+      opts.onEvent?.({ type: "card-identity", conceptId: concept.id, name: concept.name,
+        essence: kit.essence, vision: narrative.vision, story: narrative.originStory,
+        palette: kit.palette, motifUrl: motif ? rel(motif.imagePath) : undefined });
       const id = await generateIdentity(kit, { outDir: bundleDir, imageClient, llm });
       const prod = await optimizeCreative({
         kit, spec: productSpec(kit), rounds, bestOf, refImages: id.refImages,
         outDir: bundleDir, llm, imageClient,
       });
-      const rel = (p: string) => "/" + p.replace(/^\.?\//, "");
       opts.onEvent?.({ type: "image-ready", conceptId: concept.id, name: concept.name, kind: "logo", url: rel(id.logo.imagePath) });
       opts.onEvent?.({ type: "image-ready", conceptId: concept.id, name: concept.name, kind: "packaging", url: rel(id.packaging.imagePath) });
       opts.onEvent?.({ type: "image-ready", conceptId: concept.id, name: concept.name, kind: "product", url: rel(prod.champion.imagePath) });
