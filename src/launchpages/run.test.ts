@@ -135,6 +135,7 @@ test("card builder uses real buildBrandKit, builds narrative+motif, emits card-i
   const ci = events.find((e) => e.type === "card-identity");
   expect(ci?.vision).toBe("no cracked lips");
   expect(ci?.palette[0].hex).toBe("#1f3d2b");
+  expect(ci?.story).toBe("born on a trek");
   expect(await Bun.file(`${dir}/verdant/brandkit.json`).exists()).toBe(true);
   expect(await Bun.file(`${dir}/verdant/narrative.json`).exists()).toBe(true);
 });
@@ -160,5 +161,9 @@ test("card builder falls back to deriveLiteKit when buildBrandKit throws", async
     } as any,
   );
   // Still produced a card-identity from the lite kit fallback and did not crash.
-  expect(events.some((e) => e.type === "card-identity")).toBe(true);
+  const fbci = events.find((e) => e.type === "card-identity");
+  expect(fbci).toBeDefined();
+  // deriveLiteKit always uses concept.tagline as the essence fallback; verify kit came from lite stub.
+  expect(typeof fbci?.essence).toBe("string");
+  expect(fbci?.essence.length).toBeGreaterThan(0);
 });
