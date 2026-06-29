@@ -22,6 +22,9 @@ export type PipelineEvent =
       rank: number; conceptId: string; name: string;
       winRate: number; winRateCiLow: number; winRateCiHigh: number; moatOverall?: number })
   | (BaseEvent & { type: "image-ready"; conceptId: string; name: string; kind: "logo" | "packaging" | "product"; url: string })
+  | (BaseEvent & { type: "card-identity"; conceptId: string; name: string;
+      essence: string; vision: string; story: string;
+      palette: { name: string; hex: string; role: string }[]; motifUrl?: string })
   | (BaseEvent & { type: "page-ready"; conceptId: string; name: string; url: string })
   | (BaseEvent & { type: "run-complete"; pageUrls: { name: string; url: string }[] })
   | (BaseEvent & { type: "run-error"; stage?: Stage; message: string });
