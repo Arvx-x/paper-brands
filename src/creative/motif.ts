@@ -14,7 +14,12 @@ export interface MotifResult { imagePath: string; }
  */
 export async function generateMotif(
   kit: BrandKit,
-  opts: { outDir: string; imageClient?: ImageClient; llm?: LLMClient },
+  opts: {
+    outDir: string;
+    imageClient?: ImageClient;
+    /** Reserved: future use for LLM-augmented prompt generation. Currently unused. */
+    llm?: LLMClient;
+  },
 ): Promise<MotifResult | null> {
   const ic = opts.imageClient ?? new ImageClient();
   const primary = kit.palette?.find((p) => p.role === "primary")?.hex ?? kit.palette?.[0]?.hex ?? "#1a1a1a";
@@ -33,7 +38,7 @@ export async function generateMotif(
     });
     await mkdir(opts.outDir, { recursive: true });
     const ext = blob.mime.includes("jpeg") ? "jpg" : "png";
-    const path = await writeImage(blob, `${opts.outDir}/motif.${ext === "jpg" ? "jpg" : "png"}`);
+    const path = await writeImage(blob, `${opts.outDir}/motif.${ext}`);
     return { imagePath: path };
   } catch {
     return null;
